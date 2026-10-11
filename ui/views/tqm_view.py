@@ -36,6 +36,8 @@ class TQMView(ctk.CTkFrame):
     def __init__(self, master, **kwargs):
         super().__init__(master, fg_color="transparent", **kwargs)
         self.active_figures: List[Figure] = []
+        self.active_canvases: List[FigureCanvasTkAgg] = []
+        self._notice_timer_id: Optional[str] = None
 
         self._build_header()
         self._build_notification_banner()
@@ -107,7 +109,7 @@ class TQMView(ctk.CTkFrame):
         )
 
     def _show_notice(self, message: str, is_error: bool = False) -> None:
-        """Show temporary notification banner."""
+        """Show temporary notification banner with cancellation of prior timers."""
         if is_error:
             self.notice_banner.configure(
                 text=f"  ⚠️  {message}",
@@ -121,12 +123,24 @@ class TQMView(ctk.CTkFrame):
                 text_color=("#15803D", "#4ADE80"),
             )
         self.notice_banner.pack(fill="x", padx=24, pady=(0, 10), before=self.tabview)
-        self.after(4000, self._hide_notice)
+        if self._notice_timer_id is not None:
+            self.after_cancel(self._notice_timer_id)
+        self._notice_timer_id = self.after(4000, self._hide_notice)
 
     def _hide_notice(self) -> None:
-        """Dismiss notice banner."""
-        if self.notice_banner.winfo_ismapped():
-            self.notice_banner.pack_forget()
+        """Dismiss notice banner safely checking widget existence."""
+        self._notice_timer_id = None
+        if self.winfo_exists() and hasattr(self, "notice_banner") and self.notice_banner.winfo_exists():
+            if self.notice_banner.winfo_ismapped():
+                self.notice_banner.pack_forget()
+
+    def destroy(self) -> None:
+        """Safely clean up active timers and matplotlib figures upon view destruction."""
+        if hasattr(self, "_notice_timer_id") and self._notice_timer_id is not None:
+            self.after_cancel(self._notice_timer_id)
+            self._notice_timer_id = None
+        self._close_active_figures()
+        super().destroy()
 
     def _build_tabview(self) -> None:
         """Construct multi-tab container for all 6 TQM tools."""
@@ -161,8 +175,18 @@ class TQMView(ctk.CTkFrame):
         }
 
     def _close_active_figures(self) -> None:
-        """Close active matplotlib figures to prevent memory leaks."""
-        for fig in self.active_figures:
+        """Close this view's active matplotlib figures and canvases to prevent memory leaks and dangling callbacks."""
+        if hasattr(self, "active_canvases"):
+            for canvas in self.active_canvases:
+                try:
+                    tk_widget = canvas.get_tk_widget()
+                    if tk_widget.winfo_exists():
+                        tk_widget.destroy()
+                except Exception:
+                    pass
+            self.active_canvases.clear()
+
+        for fig in list(self.active_figures):
             try:
                 plt.close(fig)
             except Exception:
@@ -895,6 +919,7 @@ class TQMView(ctk.CTkFrame):
         fig.tight_layout()
 
         canvas = FigureCanvasTkAgg(fig, master=parent)
+        self.active_canvases.append(canvas)
         canvas.draw()
         canvas.get_tk_widget().pack(fill="both", expand=True, padx=12, pady=(0, 12))
 

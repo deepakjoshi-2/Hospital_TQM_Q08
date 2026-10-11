@@ -18,6 +18,7 @@ class AppointmentsView(ctk.CTkFrame):
 
     def __init__(self, master, **kwargs):
         super().__init__(master, fg_color="transparent", **kwargs)
+        self._notice_timer_id: Optional[str] = None
         self.current_search_query = ""
         self.current_status_filter = "All Statuses"
         self.appointments = self._load_appointments()
@@ -169,7 +170,7 @@ class AppointmentsView(ctk.CTkFrame):
         )
 
     def _show_notice(self, message: str, is_error: bool = False) -> None:
-        """Show temporary feedback banner."""
+        """Show temporary feedback banner with timer cancellation."""
         if is_error:
             self.notice_banner.configure(
                 text=f"  ⚠️  {message}",
@@ -183,13 +184,23 @@ class AppointmentsView(ctk.CTkFrame):
                 text_color=("#15803D", "#4ADE80"),
             )
         self.notice_banner.pack(fill="x", padx=24, pady=(0, 10), before=self.card)
-        # Auto-hide notice after 4 seconds
-        self.after(4000, self._hide_notice)
+        if self._notice_timer_id is not None:
+            self.after_cancel(self._notice_timer_id)
+        self._notice_timer_id = self.after(4000, self._hide_notice)
 
     def _hide_notice(self) -> None:
-        """Dismiss notice banner."""
-        if self.notice_banner.winfo_ismapped():
-            self.notice_banner.pack_forget()
+        """Dismiss notice banner safely checking widget existence."""
+        self._notice_timer_id = None
+        if self.winfo_exists() and hasattr(self, "notice_banner") and self.notice_banner.winfo_exists():
+            if self.notice_banner.winfo_ismapped():
+                self.notice_banner.pack_forget()
+
+    def destroy(self) -> None:
+        """Cancel pending notification timers on view destruction."""
+        if hasattr(self, "_notice_timer_id") and self._notice_timer_id is not None:
+            self.after_cancel(self._notice_timer_id)
+            self._notice_timer_id = None
+        super().destroy()
 
     def _build_table(self) -> None:
         """Card container displaying appointments roster with Action buttons."""

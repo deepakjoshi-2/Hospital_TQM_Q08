@@ -29,6 +29,7 @@ class SettingsView(ctk.CTkFrame):
         **kwargs,
     ):
         super().__init__(master, fg_color="transparent", **kwargs)
+        self._notice_timer_id: Optional[str] = None
         self.on_theme_change = on_theme_change
         self.on_profile_updated = on_profile_updated
         self.profile_data = get_user_profile() or {}
@@ -60,9 +61,12 @@ class SettingsView(ctk.CTkFrame):
         subtitle.pack(anchor="w", pady=(2, 0))
 
     def _build_notification_banner(self) -> None:
-        """Feedback toast/banner for immediate success and error reporting."""
+        """Feedback toast/banner container for immediate success and error reporting."""
+        self.notice_container = ctk.CTkFrame(self, fg_color="transparent")
+        self.notice_container.pack(fill="x")
+
         self.notice_banner = ctk.CTkLabel(
-            self,
+            self.notice_container,
             text="",
             font=ctk.CTkFont(size=12, weight="bold"),
             fg_color=("#DCFCE7", "#14532D"),
@@ -72,7 +76,7 @@ class SettingsView(ctk.CTkFrame):
         )
 
     def _show_notice(self, message: str, is_error: bool = False) -> None:
-        """Show temporary feedback banner."""
+        """Show temporary feedback banner with timer cancellation."""
         if is_error:
             self.notice_banner.configure(
                 text=f"  ⚠️  {message}",
@@ -85,13 +89,24 @@ class SettingsView(ctk.CTkFrame):
                 fg_color=("#DCFCE7", "#14532D"),
                 text_color=("#15803D", "#4ADE80"),
             )
-        self.notice_banner.pack(fill="x", padx=24, pady=(0, 10), before=self.scroll_container)
-        self.after(4000, self._hide_notice)
+        self.notice_banner.pack(fill="x", padx=24, pady=(0, 10))
+        if self._notice_timer_id is not None:
+            self.after_cancel(self._notice_timer_id)
+        self._notice_timer_id = self.after(4000, self._hide_notice)
 
     def _hide_notice(self) -> None:
-        """Dismiss notice banner."""
-        if self.notice_banner.winfo_ismapped():
-            self.notice_banner.pack_forget()
+        """Dismiss notice banner safely checking widget existence."""
+        self._notice_timer_id = None
+        if self.winfo_exists() and hasattr(self, "notice_banner") and self.notice_banner.winfo_exists():
+            if self.notice_banner.winfo_ismapped():
+                self.notice_banner.pack_forget()
+
+    def destroy(self) -> None:
+        """Cancel pending notification timers on view destruction."""
+        if hasattr(self, "_notice_timer_id") and self._notice_timer_id is not None:
+            self.after_cancel(self._notice_timer_id)
+            self._notice_timer_id = None
+        super().destroy()
 
     def _build_scrollable_container(self) -> None:
         """Scrollable container ensuring high-DPI scaling adaptability."""

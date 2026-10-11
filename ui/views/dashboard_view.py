@@ -1,6 +1,7 @@
 """Interactive Dashboard View for Hospital Management System — Q08."""
-import customtkinter as ctk
+import datetime
 from typing import Callable, Optional
+import customtkinter as ctk
 
 from database.connection import get_db_connection
 from ui.components.kpi_card import KPICard
@@ -22,7 +23,8 @@ class DashboardView(ctk.CTkFrame):
         self._build_main_sections()
 
     def _fetch_live_metrics(self) -> dict:
-        """Query SQLite database for live dashboard statistics."""
+        """Query SQLite database for live dashboard statistics based on current system date."""
+        today_str = datetime.date.today().isoformat()
         data = {
             "total_patients": "0",
             "active_doctors": "0",
@@ -30,6 +32,7 @@ class DashboardView(ctk.CTkFrame):
             "csat_score": "5.0 / 5.0",
             "csat_percentage": "100%",
             "recent_appointments": [],
+            "today_date": today_str,
         }
         try:
             with get_db_connection() as conn:
@@ -43,9 +46,10 @@ class DashboardView(ctk.CTkFrame):
                 if row:
                     data["active_doctors"] = f"{row['c']} Available"
 
-                # 3. Today's Appointments (using today's date or demo baseline 2026-10-09)
+                # 3. Today's Appointments (using dynamic current system date)
                 row = conn.execute(
-                    "SELECT COUNT(*) as c FROM appointments WHERE appointment_date = '2026-10-09';"
+                    "SELECT COUNT(*) as c FROM appointments WHERE appointment_date = ?;",
+                    (today_str,),
                 ).fetchone()
                 if row:
                     data["today_appointments"] = str(row["c"])
@@ -74,10 +78,11 @@ class DashboardView(ctk.CTkFrame):
                     FROM appointments a
                     JOIN patients p ON a.patient_id = p.id
                     JOIN doctors d ON a.doctor_id = d.id
-                    WHERE a.appointment_date = '2026-10-09'
+                    WHERE a.appointment_date = ?
                     ORDER BY a.time_slot ASC
                     LIMIT 8;
-                    """
+                    """,
+                    (today_str,),
                 )
                 data["recent_appointments"] = cursor.fetchall()
         except Exception as e:
@@ -170,7 +175,7 @@ class DashboardView(ctk.CTkFrame):
             kpi_frame,
             title="Today's Appointments",
             value=self.metrics["today_appointments"],
-            subtitle="Scheduled outpatient visits",
+            subtitle=f"Date: {self.metrics.get('today_date', '')}",
             icon="📅",
             accent_color="#F59E0B",
         )
@@ -208,9 +213,10 @@ class DashboardView(ctk.CTkFrame):
         tbl_header = ctk.CTkFrame(table_card, fg_color="transparent")
         tbl_header.pack(fill="x", padx=18, pady=(16, 10))
 
+        today_label_date = self.metrics.get("today_date", "")
         tbl_title = ctk.CTkLabel(
             tbl_header,
-            text="Today's Outpatient Appointments",
+            text=f"Today's Outpatient Schedule ({today_label_date})",
             font=ctk.CTkFont(size=16, weight="bold"),
             text_color=("#0F172A", "#F8FAFC"),
         )
@@ -253,7 +259,7 @@ class DashboardView(ctk.CTkFrame):
         if not appts:
             empty_lbl = ctk.CTkLabel(
                 rows_container,
-                text="No appointments scheduled for today.",
+                text=f"No outpatient appointments scheduled for today ({today_label_date}).",
                 font=ctk.CTkFont(size=13),
                 text_color=("#64748B", "#94A3B8"),
             )

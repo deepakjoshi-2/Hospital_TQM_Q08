@@ -28,6 +28,8 @@ class ReportsView(ctk.CTkFrame):
     def __init__(self, master, **kwargs):
         super().__init__(master, fg_color="transparent", **kwargs)
         self.active_figures: List[Figure] = []
+        self.active_canvases: List[FigureCanvasTkAgg] = []
+        self._refresh_timer_id: Optional[str] = None
 
         # Build UI layout
         self._build_header()
@@ -160,8 +162,18 @@ class ReportsView(ctk.CTkFrame):
         }
 
     def _close_active_figures(self) -> None:
-        """Close active matplotlib figures to prevent memory leaks."""
-        for fig in self.active_figures:
+        """Close this view's active matplotlib figures and canvases to prevent memory leaks and dangling callbacks."""
+        if hasattr(self, "active_canvases"):
+            for canvas in self.active_canvases:
+                try:
+                    tk_widget = canvas.get_tk_widget()
+                    if tk_widget.winfo_exists():
+                        tk_widget.destroy()
+                except Exception:
+                    pass
+            self.active_canvases.clear()
+
+        for fig in list(self.active_figures):
             try:
                 plt.close(fig)
             except Exception:
@@ -340,6 +352,7 @@ class ReportsView(ctk.CTkFrame):
         fig.tight_layout()
 
         canvas = FigureCanvasTkAgg(fig, master=parent)
+        self.active_canvases.append(canvas)
         canvas.draw()
         canvas.get_tk_widget().pack(fill="both", expand=True, padx=12, pady=(0, 12))
 
@@ -438,6 +451,7 @@ class ReportsView(ctk.CTkFrame):
         fig.tight_layout()
 
         canvas = FigureCanvasTkAgg(fig, master=parent)
+        self.active_canvases.append(canvas)
         canvas.draw()
         canvas.get_tk_widget().pack(fill="both", expand=True, padx=12, pady=(0, 12))
 
@@ -521,6 +535,7 @@ class ReportsView(ctk.CTkFrame):
         fig.tight_layout()
 
         canvas = FigureCanvasTkAgg(fig, master=parent)
+        self.active_canvases.append(canvas)
         canvas.draw()
         canvas.get_tk_widget().pack(fill="both", expand=True, padx=12, pady=(0, 12))
 
@@ -604,11 +619,12 @@ class ReportsView(ctk.CTkFrame):
         fig.tight_layout()
 
         canvas = FigureCanvasTkAgg(fig, master=parent)
+        self.active_canvases.append(canvas)
         canvas.draw()
         canvas.get_tk_widget().pack(fill="both", expand=True, padx=12, pady=(0, 12))
 
     # =========================================================================
-    # REFRESH ACTIONS
+    # REFRESH ACTIONS & LIFECYCLE CLEANUP
     # =========================================================================
     def refresh_reports(self) -> None:
         """Refresh all data queries from SQLite and re-render charts."""
@@ -618,11 +634,24 @@ class ReportsView(ctk.CTkFrame):
         try:
             self.render_all_charts()
             self.refresh_btn.configure(text="✓ Updated!", fg_color="#10B981")
-            self.after(1500, self._reset_refresh_btn)
+            if self._refresh_timer_id is not None:
+                self.after_cancel(self._refresh_timer_id)
+            self._refresh_timer_id = self.after(1500, self._reset_refresh_btn)
         except Exception as e:
             print(f"Error refreshing reports: {e}")
-            self.refresh_btn.configure(text="🔄 Refresh Data", state="normal", fg_color="#0284C7")
+            if self.winfo_exists() and hasattr(self, "refresh_btn") and self.refresh_btn.winfo_exists():
+                self.refresh_btn.configure(text="🔄 Refresh Data", state="normal", fg_color="#0284C7")
 
     def _reset_refresh_btn(self) -> None:
         """Restore normal refresh button state."""
-        self.refresh_btn.configure(text="🔄 Refresh Data", state="normal", fg_color="#0284C7")
+        self._refresh_timer_id = None
+        if self.winfo_exists() and hasattr(self, "refresh_btn") and self.refresh_btn.winfo_exists():
+            self.refresh_btn.configure(text="🔄 Refresh Data", state="normal", fg_color="#0284C7")
+
+    def destroy(self) -> None:
+        """Safely clean up active timers and matplotlib figures upon view destruction."""
+        if hasattr(self, "_refresh_timer_id") and self._refresh_timer_id is not None:
+            self.after_cancel(self._refresh_timer_id)
+            self._refresh_timer_id = None
+        self._close_active_figures()
+        super().destroy()
