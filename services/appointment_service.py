@@ -108,6 +108,41 @@ def check_slot_conflict(
         return False, None
 
 
+def check_patient_slot_conflict(
+    patient_id: int,
+    appointment_date: str,
+    time_slot: str,
+    current_appointment_id: Optional[int] = None,
+    exclude_appointment_id: Optional[int] = None,
+) -> Tuple[bool, Optional[str]]:
+    """Check if the patient already has an active appointment in the given date and time slot.
+    
+    TQM Patient Scheduling Safeguard:
+    Prevents scheduling the same patient in two consultations simultaneously.
+    Returns:
+        (has_conflict, conflicting_appointment_code)
+    """
+    try:
+        excluded_id = current_appointment_id or exclude_appointment_id
+        with get_db_connection() as conn:
+            sql = """
+                SELECT id, appointment_code FROM appointments
+                WHERE patient_id = ? AND appointment_date = ? AND time_slot = ? AND status != 'Cancelled'
+            """
+            params = [patient_id, appointment_date, time_slot]
+
+            if excluded_id:
+                sql += " AND id != ?"
+                params.append(excluded_id)
+
+            row = conn.execute(sql, tuple(params)).fetchone()
+            if row:
+                return True, row["appointment_code"]
+            return False, None
+    except Exception as e:
+        print(f"Error checking patient slot conflict: {e}")
+        return False, None
+
 
 def create_appointment(data: Dict[str, any]) -> Tuple[bool, str, Optional[int]]:
     """Validate, verify double-booking prevention, and insert appointment into SQLite.
@@ -120,8 +155,9 @@ def create_appointment(data: Dict[str, any]) -> Tuple[bool, str, Optional[int]]:
     if not is_valid:
         return False, error, None
 
-    # 2. Double-booking collision check (TQM Q08 core requirement)
+    # 2. Double-booking collision checks (TQM Q08 core requirement)
     doctor_id = int(data["doctor_id"])
+    patient_id = int(data["patient_id"])
     appt_date = str(data["appointment_date"]).strip()
     time_slot = str(data["time_slot"]).strip()
     status = str(data.get("status", "Scheduled")).strip()
@@ -133,6 +169,15 @@ def create_appointment(data: Dict[str, any]) -> Tuple[bool, str, Optional[int]]:
                 False,
                 f"Double-Booking Blocked: Doctor already has an active consultation ({conflict_code}) "
                 f"at {time_slot} on {appt_date}. Please choose another slot or physician.",
+                None,
+            )
+
+        has_patient_conflict, p_conflict_code = check_patient_slot_conflict(patient_id, appt_date, time_slot)
+        if has_patient_conflict:
+            return (
+                False,
+                f"Double-Booking Blocked: Patient already has an active consultation ({p_conflict_code}) "
+                f"at {time_slot} on {appt_date}. A patient cannot be scheduled in two consultations simultaneously.",
                 None,
             )
 
@@ -193,6 +238,16 @@ def update_appointment(appointment_id: int, data: Dict[str, any]) -> Tuple[bool,
                 False,
                 f"Double-Booking Blocked: Doctor already has an active consultation ({conflict_code}) "
                 f"at {time_slot} on {appt_date}. Please choose another slot.",
+            )
+
+        has_p_conflict, p_conflict_code = check_patient_slot_conflict(
+            int(data["patient_id"]), appt_date, time_slot, current_appointment_id=appointment_id
+        )
+        if has_p_conflict:
+            return (
+                False,
+                f"Double-Booking Blocked: Patient already has an active consultation ({p_conflict_code}) "
+                f"at {time_slot} on {appt_date}. A patient cannot be scheduled in two consultations simultaneously.",
             )
 
     rating = data.get("satisfaction_rating")
