@@ -136,17 +136,6 @@ class ReportsView(ctk.CTkFrame):
         self.scroll_frame = ctk.CTkScrollableFrame(self, fg_color="transparent")
         self.scroll_frame.pack(fill="both", expand=True, padx=24, pady=(0, 20))
 
-        # Enable mousewheel scrolling across children
-        self.scroll_frame.bind_all("<MouseWheel>", self._on_mousewheel, add="+")
-
-    def _on_mousewheel(self, event) -> None:
-        """Smooth mouse-wheel scrolling for the charts container."""
-        try:
-            if self.winfo_exists() and self.scroll_frame.winfo_exists():
-                self.scroll_frame._parent_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
-        except Exception:
-            pass
-
     def _get_theme_colors(self) -> Dict[str, str]:
         """Compute theme-adaptive colors for Matplotlib figures."""
         is_dark = ctk.get_appearance_mode().lower() == "dark"
