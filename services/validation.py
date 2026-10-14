@@ -220,25 +220,30 @@ def validate_appointment_data(
     except Exception as e:
         return False, f"Database error verifying appointment code uniqueness: {e}"
 
-    # 3. Patient Foreign Key Validation
+    # 3. Patient Foreign Key & Availability Validation
     patient_id = data.get("patient_id")
+    appt_status = str(data.get("status", "Scheduled")).strip()
     try:
         patient_id = int(patient_id)
         with get_db_connection() as conn:
-            p_row = conn.execute("SELECT id FROM patients WHERE id = ?;", (patient_id,)).fetchone()
+            p_row = conn.execute("SELECT id, status, first_name, last_name FROM patients WHERE id = ?;", (patient_id,)).fetchone()
             if not p_row:
                 return False, f"Selected Patient (ID {patient_id}) does not exist in the database."
+            if p_row["status"] == "Archived" and appt_status != "Cancelled":
+                return False, f"Cannot schedule appointment for Archived patient ({p_row['first_name']} {p_row['last_name']}). Please reactivate the patient record first."
     except (ValueError, TypeError):
         return False, "A valid Patient must be selected from the list."
 
-    # 4. Doctor Foreign Key Validation
+    # 4. Doctor Foreign Key & Availability Validation
     doctor_id = data.get("doctor_id")
     try:
         doctor_id = int(doctor_id)
         with get_db_connection() as conn:
-            d_row = conn.execute("SELECT id FROM doctors WHERE id = ?;", (doctor_id,)).fetchone()
+            d_row = conn.execute("SELECT id, status, first_name, last_name FROM doctors WHERE id = ?;", (doctor_id,)).fetchone()
             if not d_row:
                 return False, f"Selected Doctor (ID {doctor_id}) does not exist in the database."
+            if d_row["status"] == "On Leave" and appt_status != "Cancelled":
+                return False, f"Cannot schedule appointment: {d_row['first_name']} {d_row['last_name']} is currently marked 'On Leave'. Please choose an available physician."
     except (ValueError, TypeError):
         return False, "A valid Doctor must be selected from the list."
 
