@@ -295,6 +295,10 @@ class HospitalApp(ctk.CTk):
 
     def show_view(self, view_name: str) -> None:
         """Switch active view frame dynamically with highlight updating."""
+        # Normalize common aliases
+        if view_name in ("TQM Toolkit", "TQM Quality Tools"):
+            view_name = "TQM"
+
         self.active_view_name = view_name
 
         # Update Navigation Button Styles
@@ -313,6 +317,7 @@ class HospitalApp(ctk.CTk):
         # Remove existing view frame
         if self.current_view_frame is not None:
             self.current_view_frame.destroy()
+            self.current_view_frame = None
 
         # Instantiate requested view
         if view_name == "Dashboard":
@@ -341,8 +346,8 @@ class HospitalApp(ctk.CTk):
                 on_profile_updated=self.update_profile_display,
             )
 
-
-        self.current_view_frame.grid(row=1, column=0, sticky="nsew")
+        if self.current_view_frame is not None:
+            self.current_view_frame.grid(row=1, column=0, sticky="nsew")
 
     def set_theme_mode(self, mode: str) -> None:
         """Switch appearance mode in real time and refresh view."""
