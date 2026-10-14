@@ -3,6 +3,7 @@ Provides calculations, aggregations, and data management for FMEA (RPN),
 SIPOC process mapping, CTQ trees, Defect Checksheets, Pareto analysis,
 Fishbone root-cause categorization, and PDCA continuous improvement cycles.
 """
+import csv
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 from database.connection import get_db_connection, get_db_cursor
@@ -140,8 +141,12 @@ def add_fmea_record(data: Dict[str, Any]) -> Tuple[bool, str, Optional[int]]:
 # =============================================================================
 # 2. Defect Checksheet Logging & Pareto Analysis
 # =============================================================================
-def get_defect_logs(category: Optional[str] = None, severity: Optional[str] = None) -> List[Dict[str, Any]]:
-    """Query logged defects with optional category and severity filtering."""
+def get_defect_logs(
+    category: Optional[str] = None,
+    severity: Optional[str] = None,
+    status: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Query logged defects with optional category, severity, and status filtering."""
     results = []
     try:
         with get_db_connection() as conn:
@@ -153,12 +158,57 @@ def get_defect_logs(category: Optional[str] = None, severity: Optional[str] = No
             if severity and severity != "All Severities":
                 sql += " AND severity = ?"
                 params.append(severity)
+            if status and status != "All Statuses":
+                sql += " AND resolution_status = ?"
+                params.append(status)
             sql += " ORDER BY id DESC;"
             rows = conn.execute(sql, tuple(params)).fetchall()
             results = [dict(r) for r in rows]
     except Exception as e:
         print(f"Error querying defect logs: {e}")
     return results
+
+
+def export_defects_to_csv(
+    filepath: str,
+    category: Optional[str] = None,
+    severity: Optional[str] = None,
+    status: Optional[str] = None,
+) -> Tuple[bool, str, int]:
+    """Export filtered defect logs to a CSV file.
+
+    Returns:
+        (success, message, record_count)
+    """
+    try:
+        defects = get_defect_logs(category=category, severity=severity, status=status)
+        fieldnames = [
+            "Defect Code",
+            "Category",
+            "Severity",
+            "Description",
+            "Reported By",
+            "Resolution Status",
+            "Logged At",
+            "Resolved At",
+        ]
+        with open(filepath, mode="w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            for d in defects:
+                writer.writerow({
+                    "Defect Code": d.get("defect_code", ""),
+                    "Category": d.get("category", ""),
+                    "Severity": d.get("severity", ""),
+                    "Description": d.get("description", ""),
+                    "Reported By": d.get("reported_by", ""),
+                    "Resolution Status": d.get("resolution_status", ""),
+                    "Logged At": d.get("created_at", ""),
+                    "Resolved At": d.get("resolved_at", "") or "N/A",
+                })
+        return True, f"Successfully exported {len(defects)} defect logs to CSV.", len(defects)
+    except Exception as e:
+        return False, f"Failed to export defects to CSV: {str(e)}", 0
 
 
 def get_defect_pareto_data() -> Dict[str, Any]:

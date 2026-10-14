@@ -18,6 +18,7 @@ from services.tqm_service import (
     DEFECT_CATEGORIES,
     DEFECT_SEVERITIES,
     DEFECT_STATUSES,
+    export_defects_to_csv,
     get_ctq_tree_data,
     get_defect_logs,
     get_defect_pareto_data,
@@ -537,7 +538,7 @@ class TQMView(ctk.CTkFrame):
         self.def_cat_filter = ctk.CTkOptionMenu(
             right_box,
             values=["All Categories"] + DEFECT_CATEGORIES,
-            width=180,
+            width=160,
             height=32,
             corner_radius=6,
             command=lambda _: self._render_checksheet_rows(),
@@ -549,13 +550,38 @@ class TQMView(ctk.CTkFrame):
         self.def_sev_filter = ctk.CTkOptionMenu(
             right_box,
             values=["All Severities"] + DEFECT_SEVERITIES,
-            width=130,
+            width=120,
             height=32,
             corner_radius=6,
             command=lambda _: self._render_checksheet_rows(),
         )
         self.def_sev_filter.set("All Severities")
-        self.def_sev_filter.pack(side="left", padx=(0, 8))
+        self.def_sev_filter.pack(side="left", padx=(0, 6))
+
+        # Status Filter
+        self.def_status_filter = ctk.CTkOptionMenu(
+            right_box,
+            values=["All Statuses"] + DEFECT_STATUSES,
+            width=120,
+            height=32,
+            corner_radius=6,
+            command=lambda _: self._render_checksheet_rows(),
+        )
+        self.def_status_filter.set("All Statuses")
+        self.def_status_filter.pack(side="left", padx=(0, 6))
+
+        # Export CSV Button
+        self.def_export_btn = ctk.CTkButton(
+            right_box,
+            text="📥 Export CSV",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            fg_color=("#10B981", "#059669"),
+            hover_color=("#059669", "#047857"),
+            height=32,
+            corner_radius=6,
+            command=self._on_export_defects_csv,
+        )
+        self.def_export_btn.pack(side="left", padx=(0, 6))
 
         # + Log Defect Button
         log_btn = ctk.CTkButton(
@@ -606,7 +632,8 @@ class TQMView(ctk.CTkFrame):
 
         cat = self.def_cat_filter.get()
         sev = self.def_sev_filter.get()
-        defects = get_defect_logs(category=cat, severity=sev)
+        stat = self.def_status_filter.get() if hasattr(self, "def_status_filter") else None
+        defects = get_defect_logs(category=cat, severity=sev, status=stat)
 
         if not defects:
             ctk.CTkLabel(
@@ -1051,6 +1078,37 @@ class TQMView(ctk.CTkFrame):
         self._render_checksheet_rows()
         self._render_pareto_tab()
         self._show_notice(msg)
+
+    def _on_export_defects_csv(self) -> None:
+        """Export currently filtered or all defect logs to a CSV file."""
+        from tkinter import filedialog
+
+        try:
+            filepath = filedialog.asksaveasfilename(
+                title="Export Defect Checksheet Logs to CSV",
+                defaultextension=".csv",
+                filetypes=[("CSV Files", "*.csv"), ("All Files", "*.*")],
+                initialfile="TQM_Quality_Defect_Checksheet.csv",
+            )
+            if not filepath:
+                return
+
+            cat = self.def_cat_filter.get() if hasattr(self, "def_cat_filter") else None
+            sev = self.def_sev_filter.get() if hasattr(self, "def_sev_filter") else None
+            stat = self.def_status_filter.get() if hasattr(self, "def_status_filter") else None
+
+            success, msg, count = export_defects_to_csv(
+                filepath,
+                category=cat,
+                severity=sev,
+                status=stat,
+            )
+            if success:
+                self._show_notice(f"✓ {msg}")
+            else:
+                self._show_notice(f"Export failed: {msg}", is_error=True)
+        except Exception as e:
+            self._show_notice(f"Export error: {e}", is_error=True)
 
     def _on_resolve_defect(self, defect_id: int) -> None:
         """Mark defect status as Resolved."""
