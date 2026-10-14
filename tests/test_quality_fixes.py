@@ -137,6 +137,65 @@ class TestQualityFixes(unittest.TestCase):
             # Timer id should be None after destroy
             self.assertIsNone(view._notice_timer_id)
 
+    def test_06_settings_layout_compactness_and_banner_lifecycle(self):
+        """Verify SettingsView does not have empty notice container gap and manages banner lifecycle."""
+        view = SettingsView(self.root)
+        view.pack(fill="both", expand=True)
+        self.root.update_idletasks()
+        self.root.update()
+
+        # Notice container should no longer exist as a persistent spacer frame
+        self.assertFalse(hasattr(view, "notice_container"))
+        # Notice banner should initially be unmanaged by pack, consuming no vertical space
+        self.assertEqual(view.notice_banner.winfo_manager(), "")
+
+        # Showing notice should pack the banner directly after the header
+        view._show_notice("Profile updated successfully")
+        self.root.update_idletasks()
+        self.root.update()
+        self.assertEqual(view.notice_banner.winfo_manager(), "pack")
+
+        # Dismissing notice should unmanage the banner cleanly
+        view._hide_notice()
+        self.root.update_idletasks()
+        self.root.update()
+        self.assertEqual(view.notice_banner.winfo_manager(), "")
+
+        view.destroy()
+        self.root.update()
+
+    def test_07_dashboard_tqm_panel_scrolling(self):
+        """Verify DashboardView right TQM panel uses CTkScrollableFrame to prevent clipping."""
+        view = DashboardView(self.root)
+        view.pack(fill="both", expand=True)
+        self.root.update_idletasks()
+        self.root.update()
+
+        # Check scrollable container exists and is an instance of CTkScrollableFrame
+        self.assertTrue(hasattr(view, "tqm_scroll"))
+        self.assertIsInstance(view.tqm_scroll, ctk.CTkScrollableFrame)
+
+        # Confirm all 5 highlight cards, the description, and the student metadata are inside the scrollable container
+        children = view.tqm_scroll.winfo_children()
+        # 1 description label, 5 highlight frames, 1 student footer frame = 7 children
+        self.assertEqual(len(children), 7)
+
+        view.destroy()
+        self.root.update()
+
+    def test_08_reports_view_no_leaked_global_mousewheel_bindings(self):
+        """Verify ReportsView does not attach redundant global mousewheel bindings."""
+        view = ReportsView(self.root)
+        view.pack(fill="both", expand=True)
+        self.root.update_idletasks()
+        self.root.update()
+
+        # Confirm _on_mousewheel was removed in favor of native CTkScrollableFrame handling
+        self.assertFalse(hasattr(view, "_on_mousewheel"))
+
+        view.destroy()
+        self.root.update()
+
 
 if __name__ == "__main__":
     unittest.main()
