@@ -2,7 +2,8 @@
 Fetches and aggregates actual SQLite records for appointment statuses,
 chronological trends, physician workload, and patient satisfaction (CSAT).
 """
-from typing import Any, Dict, List, Optional
+import csv
+from typing import Any, Dict, List, Optional, Tuple
 from database.connection import get_db_connection
 
 
@@ -207,3 +208,140 @@ def get_reports_summary_stats() -> Dict[str, Any]:
         print(f"Error querying reports summary stats: {e}")
 
     return summary
+
+
+def export_appointments_to_csv(
+    filepath: str,
+    status_filter: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+) -> Tuple[bool, str, int]:
+    """Export appointment records from SQLite database to a structured CSV file.
+    
+    Returns:
+        (success, message, record_count)
+    """
+    try:
+        with get_db_connection() as conn:
+            sql = """
+                SELECT a.appointment_code, a.appointment_date, a.time_slot,
+                       p.patient_code, p.first_name || ' ' || p.last_name AS patient_name, p.phone AS patient_phone,
+                       d.doctor_code, d.first_name || ' ' || d.last_name AS doctor_name, d.specialization,
+                       a.priority, a.status,
+                       COALESCE(CAST(a.satisfaction_rating AS TEXT), 'Unrated') AS satisfaction_rating,
+                       a.reason, COALESCE(a.notes, '') AS notes, a.created_at
+                FROM appointments a
+                JOIN patients p ON a.patient_id = p.id
+                JOIN doctors d ON a.doctor_id = d.id
+                WHERE 1=1
+            """
+            params = []
+            if status_filter and status_filter != "All Statuses":
+                sql += " AND a.status = ?"
+                params.append(status_filter)
+            if date_from:
+                sql += " AND a.appointment_date >= ?"
+                params.append(date_from)
+            if date_to:
+                sql += " AND a.appointment_date <= ?"
+                params.append(date_to)
+
+            sql += " ORDER BY a.appointment_date DESC, a.time_slot ASC;"
+            rows = conn.execute(sql, tuple(params)).fetchall()
+
+        with open(filepath, mode="w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f, quoting=csv.QUOTE_MINIMAL)
+            # Write Header
+            writer.writerow([
+                "Appointment Code",
+                "Appointment Date",
+                "Time Slot",
+                "Patient Code",
+                "Patient Name",
+                "Patient Phone",
+                "Doctor Code",
+                "Doctor Name",
+                "Specialization",
+                "Priority",
+                "Status",
+                "Satisfaction Rating (1-5)",
+                "Reason for Visit",
+                "Clinical Notes",
+                "Created At",
+            ])
+            for r in rows:
+                writer.writerow([
+                    r["appointment_code"],
+                    r["appointment_date"],
+                    r["time_slot"],
+                    r["patient_code"],
+                    r["patient_name"],
+                    r["patient_phone"],
+                    r["doctor_code"],
+                    r["doctor_name"],
+                    r["specialization"],
+                    r["priority"],
+                    r["status"],
+                    r["satisfaction_rating"],
+                    r["reason"],
+                    r["notes"],
+                    r["created_at"],
+                ])
+
+        return True, f"Successfully exported {len(rows)} appointment record(s) to CSV.", len(rows)
+    except Exception as e:
+        return False, f"Failed to export appointments to CSV: {e}", 0
+
+
+def export_summary_report_to_csv(filepath: str) -> Tuple[bool, str]:
+    """Export high-level clinical quality metrics and KPI summaries to CSV."""
+    try:
+        summary = get_reports_summary_stats()
+        status_data = get_appointments_by_status()
+        workload = get_doctor_workload()
+        csat = get_patient_satisfaction_data()
+
+        with open(filepath, mode="w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f, quoting=csv.QUOTE_MINIMAL)
+
+            writer.writerow(["=== HOSPITAL MANAGEMENT SYSTEM — Q08 CLINICAL ANALYTICS REPORT ==="])
+            writer.writerow([])
+            writer.writerow(["Metric", "Value"])
+            writer.writerow(["Total Registered Patients", summary["total_patients"]])
+            writer.writerow(["Active Specialists / Doctors", summary["total_doctors"]])
+            writer.writerow(["Total Outpatient Appointments", summary["total_appointments"]])
+            writer.writerow(["Completed Appointments", summary["completed_count"]])
+            writer.writerow(["Scheduled Future Appointments", summary["scheduled_count"]])
+            writer.writerow(["Cancelled Consultations", summary["cancelled_count"]])
+            writer.writerow(["No-Show Appointments", summary["no_show_count"]])
+            writer.writerow(["Completion Rate", f"{summary['completion_rate_pct']}%"])
+            writer.writerow(["Average CSAT Rating", f"{summary['average_csat']} / 5.00 ⭐"])
+            writer.writerow(["Total Rated Consultations", summary["total_feedbacks"]])
+            writer.writerow([])
+
+            writer.writerow(["=== APPOINTMENTS BY STATUS BREAKDOWN ==="])
+            writer.writerow(["Status", "Count", "Percentage of Total"])
+            tot = status_data["total"]
+            for st, cnt in status_data["counts"].items():
+                pct = round((cnt / tot) * 100, 1) if tot > 0 else 0.0
+                writer.writerow([st, cnt, f"{pct}%"])
+            writer.writerow([])
+
+            writer.writerow(["=== PHYSICIAN WORKLOAD DISTRIBUTION ==="])
+            writer.writerow(["Doctor Code", "Doctor Name", "Specialization", "Total Appointments Handled"])
+            for doc in workload:
+                writer.writerow([doc["doctor_code"], doc["doctor_name"], doc["specialization"], doc["count"]])
+            writer.writerow([])
+
+            writer.writerow(["=== PATIENT SATISFACTION (CSAT) STAR BREAKDOWN ==="])
+            writer.writerow(["Rating", "Count", "Percentage of Rated"])
+            tot_rated = csat["total_rated"]
+            for star in range(1, 6):
+                c = csat["breakdown"].get(star, 0)
+                pct = round((c / tot_rated) * 100, 1) if tot_rated > 0 else 0.0
+                writer.writerow([f"{star} Star", c, f"{pct}%"])
+            writer.writerow(["Positive Rating (4-5 Stars) Rate", f"{csat['positive_rate_pct']}%"])
+
+        return True, "Summary report successfully exported to CSV."
+    except Exception as e:
+        return False, f"Failed to export summary report to CSV: {e}"
