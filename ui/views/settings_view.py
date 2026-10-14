@@ -61,12 +61,9 @@ class SettingsView(ctk.CTkFrame):
         subtitle.pack(anchor="w", pady=(2, 0))
 
     def _build_notification_banner(self) -> None:
-        """Feedback toast/banner container for immediate success and error reporting."""
-        self.notice_container = ctk.CTkFrame(self, fg_color="transparent")
-        self.notice_container.pack(fill="x")
-
+        """Feedback toast/banner for immediate success and error reporting."""
         self.notice_banner = ctk.CTkLabel(
-            self.notice_container,
+            self,
             text="",
             font=ctk.CTkFont(size=12, weight="bold"),
             fg_color=("#DCFCE7", "#14532D"),
@@ -89,7 +86,7 @@ class SettingsView(ctk.CTkFrame):
                 fg_color=("#DCFCE7", "#14532D"),
                 text_color=("#15803D", "#4ADE80"),
             )
-        self.notice_banner.pack(fill="x", padx=24, pady=(0, 10))
+        self.notice_banner.pack(fill="x", padx=24, pady=(0, 10), after=self.header)
         if self._notice_timer_id is not None:
             self.after_cancel(self._notice_timer_id)
         self._notice_timer_id = self.after(4000, self._hide_notice)
