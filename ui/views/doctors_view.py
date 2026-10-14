@@ -38,9 +38,9 @@ class DoctorsView(ctk.CTkFrame):
                 params = []
 
                 if query.strip():
-                    sql += " AND (doctor_code LIKE ? OR first_name LIKE ? OR last_name LIKE ? OR phone LIKE ? OR room_number LIKE ?)"
+                    sql += " AND (doctor_code LIKE ? OR first_name LIKE ? OR last_name LIKE ? OR phone LIKE ? OR email LIKE ? OR room_number LIKE ?)"
                     term = f"%{query.strip()}%"
-                    params.extend([term, term, term, term, term])
+                    params.extend([term, term, term, term, term, term])
 
                 if specialty and specialty != "All Specialties":
                     sql += " AND specialization = ?"
@@ -84,8 +84,8 @@ class DoctorsView(ctk.CTkFrame):
         # Search Entry
         self.search_entry = ctk.CTkEntry(
             ctrl_box,
-            placeholder_text="Search name, code, room...",
-            width=180,
+            placeholder_text="Search name, code, email, room...",
+            width=200,
             height=36,
             corner_radius=8,
         )

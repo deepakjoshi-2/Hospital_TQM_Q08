@@ -33,10 +33,10 @@ class PatientsView(ctk.CTkFrame):
                         """
                         SELECT id, patient_code, first_name, last_name, dob, gender, phone, email, blood_group, emergency_contact, address, status
                         FROM patients
-                        WHERE patient_code LIKE ? OR first_name LIKE ? OR last_name LIKE ? OR phone LIKE ?
+                        WHERE patient_code LIKE ? OR first_name LIKE ? OR last_name LIKE ? OR phone LIKE ? OR email LIKE ? OR blood_group LIKE ?
                         ORDER BY id DESC;
                         """,
-                        (term, term, term, term),
+                        (term, term, term, term, term, term),
                     )
                 else:
                     cursor = conn.execute(
@@ -82,8 +82,8 @@ class PatientsView(ctk.CTkFrame):
         # Search Entry
         self.search_entry = ctk.CTkEntry(
             ctrl_box,
-            placeholder_text="Search name, phone, code...",
-            width=220,
+            placeholder_text="Search name, phone, email, blood...",
+            width=230,
             height=36,
             corner_radius=8,
         )

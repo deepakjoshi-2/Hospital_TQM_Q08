@@ -57,14 +57,17 @@ class AppointmentsView(ctk.CTkFrame):
                     term = f"%{query.strip()}%"
                     sql += """ AND (
                         a.appointment_code LIKE ? OR 
+                        p.patient_code LIKE ? OR
                         p.first_name LIKE ? OR 
                         p.last_name LIKE ? OR 
+                        d.doctor_code LIKE ? OR
                         d.first_name LIKE ? OR 
                         d.last_name LIKE ? OR 
+                        d.specialization LIKE ? OR
                         a.appointment_date LIKE ? OR
                         a.reason LIKE ?
                     )"""
-                    params.extend([term, term, term, term, term, term, term])
+                    params.extend([term, term, term, term, term, term, term, term, term, term])
 
                 if status_filter and status_filter not in ("All", "All Statuses"):
                     sql += " AND a.status = ?"
