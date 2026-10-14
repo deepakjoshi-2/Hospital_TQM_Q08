@@ -142,7 +142,22 @@ class AppointmentsView(ctk.CTkFrame):
             corner_radius=8,
             command=self._on_clear_filters,
         )
-        clear_btn.pack(side="left", padx=(0, 10))
+        clear_btn.pack(side="left", padx=(0, 8))
+
+        # 📥 Export CSV Button
+        self.export_btn = ctk.CTkButton(
+            ctrl_box,
+            text="📥 Export CSV",
+            font=ctk.CTkFont(size=12),
+            fg_color=("#E2E8F0", "#334155"),
+            text_color=("#0F172A", "#F8FAFC"),
+            hover_color=("#CBD5E1", "#475569"),
+            width=95,
+            height=36,
+            corner_radius=8,
+            command=self._on_export_csv,
+        )
+        self.export_btn.pack(side="left", padx=(0, 8))
 
         # + Book Appointment Button (Prominent Action)
         add_btn = ctk.CTkButton(
@@ -449,3 +464,27 @@ class AppointmentsView(ctk.CTkFrame):
         self.current_search_query = ""
         self.current_status_filter = "All Statuses"
         self.refresh_data()
+
+    def _on_export_csv(self) -> None:
+        """Export currently filtered or all appointments to a CSV file."""
+        from tkinter import filedialog
+        from services.report_service import export_appointments_to_csv
+
+        try:
+            filepath = filedialog.asksaveasfilename(
+                title="Export Appointments Roster to CSV",
+                defaultextension=".csv",
+                filetypes=[("CSV Files", "*.csv"), ("All Files", "*.*")],
+                initialfile="Hospital_Appointments_Roster.csv",
+            )
+            if not filepath:
+                return
+
+            filter_arg = self.current_status_filter if self.current_status_filter != "All Statuses" else None
+            success, msg, count = export_appointments_to_csv(filepath, status_filter=filter_arg)
+            if success:
+                self._show_notice(f"✓ {msg}")
+            else:
+                self._show_notice(f"Export failed: {msg}", is_error=True)
+        except Exception as e:
+            self._show_notice(f"Export error: {e}", is_error=True)

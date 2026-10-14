@@ -69,6 +69,21 @@ class ReportsView(ctk.CTkFrame):
         self.pills_frame = ctk.CTkFrame(self.ctrl_box, fg_color="transparent")
         self.pills_frame.pack(side="left", padx=(0, 12))
 
+        # Export CSV Button
+        self.export_btn = ctk.CTkButton(
+            self.ctrl_box,
+            text="📥 Export CSV",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            fg_color=("#E2E8F0", "#334155"),
+            text_color=("#0F172A", "#F8FAFC"),
+            hover_color=("#CBD5E1", "#475569"),
+            width=110,
+            height=36,
+            corner_radius=8,
+            command=self._on_export_csv,
+        )
+        self.export_btn.pack(side="left", padx=(0, 8))
+
         # Refresh Reports Button
         self.refresh_btn = ctk.CTkButton(
             self.ctrl_box,
@@ -613,8 +628,38 @@ class ReportsView(ctk.CTkFrame):
         canvas.get_tk_widget().pack(fill="both", expand=True, padx=12, pady=(0, 12))
 
     # =========================================================================
-    # REFRESH ACTIONS & LIFECYCLE CLEANUP
+    # EXPORT & REFRESH ACTIONS & LIFECYCLE CLEANUP
     # =========================================================================
+    def _on_export_csv(self) -> None:
+        """Export comprehensive clinical quality summary report to CSV."""
+        from tkinter import filedialog
+        from services.report_service import export_summary_report_to_csv
+
+        try:
+            filepath = filedialog.asksaveasfilename(
+                title="Export Clinical Analytics Report to CSV",
+                defaultextension=".csv",
+                filetypes=[("CSV Files", "*.csv"), ("All Files", "*.*")],
+                initialfile="Hospital_Q08_Analytics_Report.csv",
+            )
+            if not filepath:
+                return
+
+            success, msg = export_summary_report_to_csv(filepath)
+            if success:
+                self.export_btn.configure(text="✓ Exported!", fg_color="#10B981")
+                self.after(2000, self._reset_export_btn)
+            else:
+                self.export_btn.configure(text="⚠️ Error", fg_color="#EF4444")
+                self.after(2000, self._reset_export_btn)
+        except Exception as e:
+            print(f"Error exporting report to CSV: {e}")
+
+    def _reset_export_btn(self) -> None:
+        """Restore export button style."""
+        if self.winfo_exists() and hasattr(self, "export_btn") and self.export_btn.winfo_exists():
+            self.export_btn.configure(text="📥 Export CSV", fg_color=("#E2E8F0", "#334155"))
+
     def refresh_reports(self) -> None:
         """Refresh all data queries from SQLite and re-render charts."""
         self.refresh_btn.configure(text="⏳ Refreshing...", state="disabled")
