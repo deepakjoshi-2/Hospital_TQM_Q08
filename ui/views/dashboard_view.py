@@ -302,16 +302,20 @@ class DashboardView(ctk.CTkFrame):
         )
         badge.pack(side="right")
 
+        # Scrollable container for TQM highlights and student metadata
+        self.tqm_scroll = ctk.CTkScrollableFrame(tqm_card, fg_color="transparent")
+        self.tqm_scroll.pack(fill="both", expand=True, padx=12, pady=(0, 12))
+
         # Highlights content
         desc = ctk.CTkLabel(
-            tqm_card,
+            self.tqm_scroll,
             text="Goal: Maximize User Satisfaction by eliminating registration bottlenecks, interface lag, and booking friction.",
             font=ctk.CTkFont(size=12),
             text_color=("#64748B", "#94A3B8"),
             wraplength=320,
             justify="left",
         )
-        desc.pack(fill="x", padx=18, pady=(0, 12))
+        desc.pack(fill="x", padx=6, pady=(0, 10))
 
         # TQM Checklist items
         highlights = [
@@ -323,8 +327,8 @@ class DashboardView(ctk.CTkFrame):
         ]
 
         for title, detail in highlights:
-            item_box = ctk.CTkFrame(tqm_card, fg_color=("#F8FAFC", "#26293B"), corner_radius=8)
-            item_box.pack(fill="x", padx=16, pady=4)
+            item_box = ctk.CTkFrame(self.tqm_scroll, fg_color=("#F8FAFC", "#26293B"), corner_radius=8)
+            item_box.pack(fill="x", padx=6, pady=4)
 
             t_lbl = ctk.CTkLabel(
                 item_box,
@@ -345,8 +349,8 @@ class DashboardView(ctk.CTkFrame):
             d_lbl.pack(fill="x", padx=10, pady=(0, 6))
 
         # Bottom Student Info
-        student_frame = ctk.CTkFrame(tqm_card, fg_color="transparent")
-        student_frame.pack(fill="x", padx=18, pady=(12, 14), side="bottom")
+        student_frame = ctk.CTkFrame(self.tqm_scroll, fg_color="transparent")
+        student_frame.pack(fill="x", padx=6, pady=(12, 4))
 
         st_lbl = ctk.CTkLabel(
             student_frame,
