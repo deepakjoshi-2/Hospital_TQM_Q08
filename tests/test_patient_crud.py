@@ -121,6 +121,16 @@ class TestPatientCRUD(unittest.TestCase):
                 f"Baseline patient count altered! Expected {self.baseline_count}, found {current_count}",
             )
 
+    def test_04_deletion_blocked_for_patient_with_appointments(self):
+        """Verify that patients with existing appointments cannot be deleted."""
+        with get_db_connection() as conn:
+            busy_pat = conn.execute("SELECT id FROM patients WHERE patient_code = 'PAT-1001';").fetchone()
+            pat_id = busy_pat["id"]
+
+        del_success, del_msg = delete_patient(pat_id)
+        self.assertFalse(del_success)
+        self.assertIn("linked clinical appointment", del_msg)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -136,7 +136,19 @@ def archive_patient(patient_id: int) -> Tuple[bool, str]:
 
 
 def delete_patient(patient_id: int) -> Tuple[bool, str]:
-    """Permanently delete patient record from SQLite database."""
+    """Permanently delete patient record from SQLite database if no linked appointments exist.
+    
+    TQM Patient Safety Guard:
+    Prevents cascading deletion of clinical history. Archived status should be used instead.
+    """
+    appt_count = get_patient_appointment_count(patient_id)
+    if appt_count > 0:
+        return (
+            False,
+            f"Cannot delete permanently: Patient has {appt_count} linked clinical appointment(s). "
+            f"Please archive the patient record instead to preserve clinical audit history.",
+        )
+
     try:
         with get_db_cursor() as (conn, cursor):
             cursor.execute("DELETE FROM patients WHERE id = ?;", (patient_id,))
