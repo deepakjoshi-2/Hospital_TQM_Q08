@@ -93,7 +93,61 @@ def validate_fmea_data(data: Dict[str, Any]) -> Tuple[bool, str]:
         except (ValueError, TypeError):
             return False, f"{name} must be a valid integer between 1 and 10."
 
+    initial_rpn = int(data["severity_s"]) * int(data["occurrence_o"]) * int(data["detection_d"])
+    target_rpn = int(data["target_severity"]) * int(data["target_occurrence"]) * int(data["target_detection"])
+    if target_rpn > initial_rpn:
+        return (
+            False,
+            f"Target RPN ({target_rpn}) cannot exceed Initial RPN ({initial_rpn}). "
+            "Mitigation actions must reduce or maintain risk level.",
+        )
+
     return True, ""
+
+
+def get_fmea_summary_stats() -> Dict[str, Any]:
+    """Calculate summary statistics for all FMEA records in SQLite database.
+
+    Returns:
+        dict containing:
+            - 'total_failure_modes': count of distinct failure modes
+            - 'avg_initial_rpn': average initial RPN across all failure modes
+            - 'avg_target_rpn': average target RPN across all failure modes
+            - 'overall_reduction_pct': overall percentage risk reduction
+            - 'high_risk_count': count of failure modes with RPN >= 200
+    """
+    stats = {
+        "total_failure_modes": 0,
+        "avg_initial_rpn": 0.0,
+        "avg_target_rpn": 0.0,
+        "overall_reduction_pct": 0.0,
+        "high_risk_count": 0,
+    }
+    try:
+        with get_db_connection() as conn:
+            row = conn.execute(
+                """
+                SELECT COUNT(*) as total,
+                       AVG(rpn) as avg_init,
+                       AVG(target_rpn) as avg_target,
+                       SUM(CASE WHEN rpn >= 200 THEN 1 ELSE 0 END) as high_risk
+                FROM tqm_fmea_records;
+                """
+            ).fetchone()
+            if row and row["total"] and row["total"] > 0:
+                stats["total_failure_modes"] = row["total"]
+                avg_init = round(float(row["avg_init"] or 0), 1)
+                avg_target = round(float(row["avg_target"] or 0), 1)
+                stats["avg_initial_rpn"] = avg_init
+                stats["avg_target_rpn"] = avg_target
+                stats["high_risk_count"] = int(row["high_risk"] or 0)
+                if avg_init > 0:
+                    stats["overall_reduction_pct"] = round(
+                        ((avg_init - avg_target) / avg_init) * 100, 1
+                    )
+    except Exception as e:
+        print(f"Error calculating FMEA summary stats: {e}")
+    return stats
 
 
 def add_fmea_record(data: Dict[str, Any]) -> Tuple[bool, str, Optional[int]]:

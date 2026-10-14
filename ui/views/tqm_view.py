@@ -24,6 +24,7 @@ from services.tqm_service import (
     get_defect_pareto_data,
     get_fishbone_data,
     get_fmea_records,
+    get_fmea_summary_stats,
     get_pdca_cycles_data,
     get_sipoc_data,
     update_defect_status,
@@ -216,7 +217,12 @@ class TQMView(ctk.CTkFrame):
             text_color=("#0F172A", "#F8FAFC"),
         ).pack(anchor="w")
 
-        formula_text = "Formula: RPN = Severity (S) × Occurrence (O) × Detection (D). Ratings: 1 (Lowest) to 10 (Highest Risk)."
+        fmea_stats = get_fmea_summary_stats()
+        formula_text = (
+            f"RPN = S × O × D  •  Avg Initial: {fmea_stats['avg_initial_rpn']} → "
+            f"Avg Target: {fmea_stats['avg_target_rpn']} ({fmea_stats['overall_reduction_pct']}% Risk Reduction)  •  "
+            f"High Risk (≥200): {fmea_stats['high_risk_count']}"
+        )
         ctk.CTkLabel(
             left_info,
             text=formula_text,
