@@ -23,11 +23,19 @@ def validate_patient_data(
         return False, "First Name is required."
     if len(first_name) < 2:
         return False, "First Name must be at least 2 characters long."
+    if len(first_name) > 50:
+        return False, "First Name must not exceed 50 characters."
+    if not re.match(r"^[A-Za-z\s\.\-']+$", first_name):
+        return False, "First Name can only contain alphabetic characters, spaces, hyphens, and apostrophes."
 
     # 2. Required Last Name
     last_name = data.get("last_name", "").strip()
     if not last_name:
         return False, "Last Name is required."
+    if len(last_name) > 50:
+        return False, "Last Name must not exceed 50 characters."
+    if not re.match(r"^[A-Za-z\s\.\-']+$", last_name):
+        return False, "Last Name can only contain alphabetic characters, spaces, hyphens, and apostrophes."
 
     # 3. Required Patient Code & Format
     patient_code = data.get("patient_code", "").strip().upper()
@@ -78,19 +86,33 @@ def validate_patient_data(
     if len(digits) < 10 or len(digits) > 15:
         return False, "Phone Number must contain between 10 and 15 digits."
 
-    # 8. Email Validation (if provided)
+    # 8. Emergency Contact Validation (if provided)
+    emergency_contact = data.get("emergency_contact", "").strip()
+    if emergency_contact:
+        e_digits = re.sub(r"\D", "", emergency_contact)
+        if len(e_digits) < 10 or len(e_digits) > 15:
+            return False, "Emergency Contact Number must contain between 10 and 15 digits."
+        if e_digits == digits:
+            return False, "Emergency Contact Number cannot be identical to patient primary phone."
+
+    # 9. Email Validation (if provided)
     email = data.get("email", "").strip()
     if email:
         email_regex = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
         if not re.match(email_regex, email):
             return False, "Invalid email address format (e.g., user@example.com)."
 
-    # 9. Blood Group Check (if provided)
+    # 10. Blood Group Check (if provided)
     blood_group = data.get("blood_group", "").strip()
     if blood_group and blood_group not in BLOOD_GROUPS:
         return False, f"Invalid Blood Group. Choose from: {', '.join(BLOOD_GROUPS)}"
 
-    # 10. Status Check
+    # 11. Address Length Check
+    address = data.get("address", "").strip()
+    if len(address) > 250:
+        return False, "Address must not exceed 250 characters."
+
+    # 12. Status Check
     status = data.get("status", "Active").strip()
     if status not in PATIENT_STATUSES:
         return False, f"Invalid Status. Choose from: {', '.join(PATIENT_STATUSES)}"
@@ -114,11 +136,19 @@ def validate_doctor_data(
         return False, "First Name is required."
     if len(first_name) < 2:
         return False, "First Name must be at least 2 characters long."
+    if len(first_name) > 50:
+        return False, "First Name must not exceed 50 characters."
+    if not re.match(r"^[A-Za-z\s\.\-']+$", first_name):
+        return False, "First Name can only contain alphabetic characters, spaces, hyphens, and apostrophes."
 
     # 2. Required Last Name
     last_name = str(data.get("last_name", "")).strip()
     if not last_name:
         return False, "Last Name is required."
+    if len(last_name) > 50:
+        return False, "Last Name must not exceed 50 characters."
+    if not re.match(r"^[A-Za-z\s\.\-']+$", last_name):
+        return False, "Last Name can only contain alphabetic characters, spaces, hyphens, and apostrophes."
 
     # 3. Required Doctor Code & Format
     doctor_code = str(data.get("doctor_code", "")).strip().upper()
@@ -163,12 +193,14 @@ def validate_doctor_data(
     if not re.match(email_regex, email):
         return False, "Invalid email address format (e.g., doctor@hospital.demo)."
 
-    # 8. Consultation Fee (Non-negative numeric)
+    # 8. Consultation Fee (Non-negative numeric with reasonable upper bound)
     fee_val = data.get("consultation_fee", "")
     try:
         fee_float = float(fee_val)
         if fee_float < 0:
             return False, "Consultation Fee must be zero or a positive amount."
+        if fee_float > 100000.0:
+            return False, "Consultation Fee must not exceed 100,000."
     except (ValueError, TypeError):
         return False, "Consultation Fee must be a valid number (e.g., 500 or 750.0)."
 
@@ -176,6 +208,8 @@ def validate_doctor_data(
     room_number = str(data.get("room_number", "")).strip()
     if not room_number:
         return False, "Consultation Room / OPD Number is required (e.g., Room-101)."
+    if len(room_number) > 20:
+        return False, "Consultation Room Number must not exceed 20 characters."
 
     # 10. Doctor Availability Status
     status = str(data.get("status", "Available")).strip()
@@ -247,12 +281,15 @@ def validate_appointment_data(
     except (ValueError, TypeError):
         return False, "A valid Doctor must be selected from the list."
 
-    # 5. Appointment Date Validation (YYYY-MM-DD)
+    # 5. Appointment Date Validation (YYYY-MM-DD within realistic operational range)
     appt_date = str(data.get("appointment_date", "")).strip()
     if not appt_date:
         return False, "Appointment Date is required (format: YYYY-MM-DD)."
     try:
-        datetime.strptime(appt_date, "%Y-%m-%d").date()
+        parsed_date = datetime.strptime(appt_date, "%Y-%m-%d").date()
+        today = datetime.now().date()
+        if parsed_date.year < today.year - 1 or parsed_date.year > today.year + 2:
+            return False, f"Appointment Date must be between {today.year - 1} and {today.year + 2}."
     except ValueError:
         return False, "Invalid Appointment Date. Please use format YYYY-MM-DD (e.g., 2026-10-15)."
 
@@ -269,6 +306,8 @@ def validate_appointment_data(
         return False, "Reason for Visit is required (e.g., Cardiac screening, Routine checkup)."
     if len(reason) < 3:
         return False, "Reason for Visit must be at least 3 characters long."
+    if len(reason) > 200:
+        return False, "Reason for Visit must not exceed 200 characters."
 
     # 8. Priority Check
     priority = str(data.get("priority", "Normal")).strip()
