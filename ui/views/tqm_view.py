@@ -133,8 +133,7 @@ class TQMView(ctk.CTkFrame):
         """Dismiss notice banner safely checking widget existence."""
         self._notice_timer_id = None
         if self.winfo_exists() and hasattr(self, "notice_banner") and self.notice_banner.winfo_exists():
-            if self.notice_banner.winfo_ismapped():
-                self.notice_banner.pack_forget()
+            self.notice_banner.pack_forget()
 
     def destroy(self) -> None:
         """Safely clean up active timers and matplotlib figures upon view destruction."""
