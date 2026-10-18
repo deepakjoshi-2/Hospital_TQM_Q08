@@ -760,10 +760,9 @@ class TQMView(ctk.CTkFrame):
 
         scroll = ctk.CTkScrollableFrame(self.tab_pareto, fg_color="transparent")
         scroll.pack(fill="both", expand=True, padx=12, pady=(8, 10))
-        scroll.grid_columnconfigure((0, 1), weight=1)
 
         # -------------------------------------------------------------
-        # Left Card: Pareto Chart (80/20 Rule Analysis)
+        # Top Card: Pareto Chart (80/20 Rule Analysis)
         # -------------------------------------------------------------
         pareto_card = ctk.CTkFrame(
             scroll,
@@ -772,7 +771,7 @@ class TQMView(ctk.CTkFrame):
             border_width=1,
             border_color=("#E2E8F0", "#334155"),
         )
-        pareto_card.grid(row=0, column=0, padx=(0, 6), pady=4, sticky="nsew")
+        pareto_card.pack(fill="x", padx=4, pady=(0, 14))
 
         ctk.CTkLabel(
             pareto_card,
@@ -802,7 +801,7 @@ class TQMView(ctk.CTkFrame):
             ).pack(pady=40)
 
         # -------------------------------------------------------------
-        # Right Card: Fishbone / Ishikawa Root Cause Analysis
+        # Bottom Card: Graphical Fishbone / Ishikawa Root Cause Analysis
         # -------------------------------------------------------------
         fish_card = ctk.CTkFrame(
             scroll,
@@ -811,78 +810,197 @@ class TQMView(ctk.CTkFrame):
             border_width=1,
             border_color=("#E2E8F0", "#334155"),
         )
-        fish_card.grid(row=0, column=1, padx=(6, 0), pady=4, sticky="nsew")
+        fish_card.pack(fill="x", padx=4, pady=(0, 14))
 
         ctk.CTkLabel(
             fish_card,
-            text="Ishikawa Cause-and-Effect (Fishbone) Analysis",
+            text="Ishikawa Cause-and-Effect (Fishbone) Diagram",
             font=ctk.CTkFont(size=14, weight="bold"),
             text_color=("#0F172A", "#F8FAFC"),
         ).pack(anchor="w", padx=16, pady=(12, 2))
 
         ctk.CTkLabel(
             fish_card,
-            text="Systematic root-cause categorization across People, Process, Technology, and Measurement.",
+            text="Classical 4-branch root-cause analysis mapping 12 root causes directly across People, Process, Technology, and Measurement.",
             font=ctk.CTkFont(size=11),
             text_color=("#64748B", "#94A3B8"),
         ).pack(anchor="w", padx=16, pady=(0, 8))
 
         fish_data = get_fishbone_data()
 
-        # Problem Statement Chip
-        prob_box = ctk.CTkFrame(fish_card, fg_color=("#FEE2E2", "#7F1D1D"), corner_radius=6)
-        prob_box.pack(fill="x", padx=14, pady=(0, 8))
-        ctk.CTkLabel(
-            prob_box,
-            text=f"🎯 Effect: {fish_data['problem']}",
-            font=ctk.CTkFont(size=11, weight="bold"),
-            text_color=("#DC2626", "#FCA5A5"),
-            padx=10,
-            pady=6,
-        ).pack(anchor="w")
+        # Embed classical graphical fishbone diagram
+        self._embed_fishbone_diagram(fish_card, fish_data)
 
-        # Branches
-        for branch_name, causes in fish_data["branches"].items():
-            b_frame = ctk.CTkFrame(fish_card, fg_color=("#F8FAFC", "#26293B"), corner_radius=6)
-            b_frame.pack(fill="x", padx=14, pady=3)
-
-            ctk.CTkLabel(
-                b_frame,
-                text=branch_name,
-                font=ctk.CTkFont(size=11, weight="bold"),
-                text_color="#0284C7",
-                padx=8,
-                pady=4,
-            ).pack(anchor="w")
-
-            for c in causes:
-                ctk.CTkLabel(
-                    b_frame,
-                    text=f"  • {c}",
-                    font=ctk.CTkFont(size=10),
-                    text_color=("#0F172A", "#F8FAFC"),
-                    justify="left",
-                    wraplength=340,
-                ).pack(anchor="w", padx=8, pady=1)
-
-        # Root cause conclusion
+        # Root cause conclusion banner
         res_box = ctk.CTkFrame(fish_card, fg_color=("#DCFCE7", "#14532D"), corner_radius=6)
-        res_box.pack(fill="x", padx=14, pady=(8, 12))
+        res_box.pack(fill="x", padx=14, pady=(4, 14))
         ctk.CTkLabel(
             res_box,
-            text=f"💡 {fish_data['root_cause_summary']}",
+            text=f"💡 Key Root Cause Synthesis & Mitigation: {fish_data['root_cause_summary']}",
             font=ctk.CTkFont(size=10, weight="bold"),
             text_color=("#15803D", "#4ADE80"),
             justify="left",
-            wraplength=340,
+            wraplength=860,
             padx=10,
             pady=8,
         ).pack(anchor="w")
 
+    def _embed_fishbone_diagram(self, parent: ctk.CTkFrame, fish_data: Dict[str, Any]) -> None:
+        """Embed classical graphical Ishikawa (Fishbone) diagram into Tkinter canvas."""
+        theme = self._get_theme_colors()
+        is_dark = theme["is_dark"]
+
+        fig = Figure(figsize=(10.5, 5.6), dpi=100)
+        self.active_figures.append(fig)
+        fig.patch.set_facecolor(theme["bg"])
+
+        ax = fig.add_subplot(111)
+        ax.set_facecolor(theme["bg"])
+        ax.set_xlim(-0.2, 10.6)
+        ax.set_ylim(-4.2, 4.2)
+        ax.axis("off")
+
+        spine_color = "#0284C7" if is_dark else "#0369A1"
+        sub_branch_color = "#475569" if is_dark else "#94A3B8"
+        cause_bg = "#26293B" if is_dark else "#F1F5F9"
+        cause_edge = "#334155" if is_dark else "#CBD5E1"
+        cause_text = "#F8FAFC" if is_dark else "#0F172A"
+        problem_bg = "#7F1D1D" if is_dark else "#FEE2E2"
+        problem_edge = "#EF4444" if is_dark else "#DC2626"
+        problem_text = "#FCA5A5" if is_dark else "#991B1B"
+
+        # 1. Main Horizontal Spine Arrow (Left to Right)
+        ax.annotate(
+            "",
+            xy=(8.4, 0),
+            xytext=(0.4, 0),
+            arrowprops=dict(arrowstyle="-|>", color=spine_color, lw=3.5, mutation_scale=22),
+        )
+
+        # 2. Fish Head / Effect Statement Box
+        effect_label = (
+            "EFFECT / PROBLEM:\n"
+            "Outpatient Booking Delays\n"
+            "& Slot Collisions\n"
+            "(Pre-Improvement)"
+        )
+        ax.text(
+            8.5, 0,
+            effect_label,
+            color=problem_text,
+            fontsize=8.8,
+            fontweight="bold",
+            ha="left",
+            va="center",
+            bbox=dict(boxstyle="square,pad=0.55", facecolor=problem_bg, edgecolor=problem_edge, lw=1.6),
+        )
+
+        # 3. Four Major Ribs
+        rib_specs = [
+            {
+                "category": "People (Staff & Patients)",
+                "causes": fish_data["branches"].get("People (Staff & Patients)", []),
+                "rib_start": (2.0, 3.4),
+                "spine_join": (4.0, 0.0),
+                "is_top": True,
+                "color": "#0284C7",
+                "badge_bg": "#0369A1",
+            },
+            {
+                "category": "Process (Workflow Methods)",
+                "causes": fish_data["branches"].get("Process (Workflow Methods)", []),
+                "rib_start": (5.5, 3.4),
+                "spine_join": (7.5, 0.0),
+                "is_top": True,
+                "color": "#0D9488",
+                "badge_bg": "#0F766E",
+            },
+            {
+                "category": "Technology & Tools (Software / DB)",
+                "causes": fish_data["branches"].get("Technology & Tools (Software / DB)", []),
+                "rib_start": (2.0, -3.4),
+                "spine_join": (4.0, 0.0),
+                "is_top": False,
+                "color": "#7C3AED",
+                "badge_bg": "#6D28D9",
+            },
+            {
+                "category": "Measurement & Environment",
+                "causes": fish_data["branches"].get("Measurement & Environment", []),
+                "rib_start": (5.5, -3.4),
+                "spine_join": (7.5, 0.0),
+                "is_top": False,
+                "color": "#D97706",
+                "badge_bg": "#B45309",
+            },
+        ]
+
+        for spec in rib_specs:
+            rx, ry = spec["rib_start"]
+            sx, sy = spec["spine_join"]
+            is_top = spec["is_top"]
+
+            # Draw angled major bone rib
+            ax.plot([rx, sx], [ry, sy], color=spec["color"], lw=2.4, solid_capstyle="round")
+
+            # Category Header Badge
+            ax.text(
+                rx - 0.1, ry + (0.35 if is_top else -0.35),
+                spec["category"],
+                color="#FFFFFF",
+                fontsize=9.2,
+                fontweight="bold",
+                ha="center",
+                va="bottom" if is_top else "top",
+                bbox=dict(boxstyle="round,pad=0.35", facecolor=spec["badge_bg"], edgecolor="none"),
+            )
+
+            # Position 3 causes along the rib
+            causes = spec["causes"]
+            t_vals = [0.25, 0.52, 0.78]
+
+            for t, cause in zip(t_vals, causes):
+                px = rx + t * (sx - rx)
+                py = ry + t * (sy - ry)
+
+                # Horizontal sub-branch line pointing back towards the left
+                sub_len = 0.55
+                sub_x = px - sub_len
+                ax.plot([sub_x, px], [py, py], color=sub_branch_color, lw=1.2, linestyle="-")
+
+                # Format cause text into max 2 compact lines
+                words = cause.split(" ")
+                line1, line2 = [], []
+                cur_len = 0
+                for w in words:
+                    if cur_len < 20:
+                        line1.append(w)
+                        cur_len += len(w) + 1
+                    else:
+                        line2.append(w)
+                wrapped = " ".join(line1) + ("\n" + " ".join(line2) if line2 else "")
+
+                ax.text(
+                    sub_x - 0.05, py,
+                    wrapped,
+                    color=cause_text,
+                    fontsize=7.2,
+                    ha="right",
+                    va="center",
+                    bbox=dict(boxstyle="square,pad=0.22", facecolor=cause_bg, edgecolor=cause_edge, lw=0.7),
+                )
+
+        fig.tight_layout()
+
+        canvas = FigureCanvasTkAgg(fig, master=parent)
+        self.active_canvases.append(canvas)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill="x", expand=True, padx=12, pady=(0, 8))
+
     def _embed_pareto_chart(self, parent: ctk.CTkFrame, data: Dict[str, Any]) -> None:
         """Embed Matplotlib Pareto 80/20 chart with dual Y-axes."""
         theme = self._get_theme_colors()
-        fig = Figure(figsize=(5.2, 4.0), dpi=100)
+        fig = Figure(figsize=(10.0, 3.8), dpi=100)
         self.active_figures.append(fig)
         fig.patch.set_facecolor(theme["bg"])
 
