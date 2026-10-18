@@ -37,12 +37,15 @@ class ReportsView(ctk.CTkFrame):
         self.render_all_charts()
 
     def _build_header(self) -> None:
-        """Header with report title, summary KPI pills, and refresh button."""
+        """Header with report title, action buttons, and responsive summary KPI cards."""
         self.header_frame = ctk.CTkFrame(self, fg_color="transparent")
-        self.header_frame.pack(fill="x", padx=24, pady=(20, 12))
+        self.header_frame.pack(fill="x", padx=24, pady=(20, 10))
 
-        # Title and description on left
-        info_box = ctk.CTkFrame(self.header_frame, fg_color="transparent")
+        # Top row: title & subtitle on left, actions on right
+        top_row = ctk.CTkFrame(self.header_frame, fg_color="transparent")
+        top_row.pack(fill="x")
+
+        info_box = ctk.CTkFrame(top_row, fg_color="transparent")
         info_box.pack(side="left")
 
         title = ctk.CTkLabel(
@@ -61,13 +64,9 @@ class ReportsView(ctk.CTkFrame):
         )
         self.subtitle_lbl.pack(anchor="w", pady=(2, 0))
 
-        # Right control panel: KPI pills + Refresh button
-        self.ctrl_box = ctk.CTkFrame(self.header_frame, fg_color="transparent")
+        # Right control panel: Export CSV + Refresh Reports
+        self.ctrl_box = ctk.CTkFrame(top_row, fg_color="transparent")
         self.ctrl_box.pack(side="right")
-
-        # KPI Pills Frame
-        self.pills_frame = ctk.CTkFrame(self.ctrl_box, fg_color="transparent")
-        self.pills_frame.pack(side="left", padx=(0, 12))
 
         # Export CSV Button
         self.export_btn = ctk.CTkButton(
@@ -77,7 +76,7 @@ class ReportsView(ctk.CTkFrame):
             fg_color=("#E2E8F0", "#334155"),
             text_color=("#0F172A", "#F8FAFC"),
             hover_color=("#CBD5E1", "#475569"),
-            width=110,
+            width=120,
             height=36,
             corner_radius=8,
             command=self._on_export_csv,
@@ -88,7 +87,7 @@ class ReportsView(ctk.CTkFrame):
         self.refresh_btn = ctk.CTkButton(
             self.ctrl_box,
             text="🔄 Refresh Data",
-            font=ctk.CTkFont(size=13, weight="bold"),
+            font=ctk.CTkFont(size=12, weight="bold"),
             fg_color="#0284C7",
             hover_color="#0369A1",
             width=130,
@@ -97,6 +96,10 @@ class ReportsView(ctk.CTkFrame):
             command=self.refresh_reports,
         )
         self.refresh_btn.pack(side="left")
+
+        # Bottom row: Summary KPI Badges Frame
+        self.pills_frame = ctk.CTkFrame(self.header_frame, fg_color="transparent")
+        self.pills_frame.pack(fill="x", pady=(10, 0))
 
     def _update_kpi_pills(self, stats: Dict[str, Any]) -> None:
         """Render quick summary badges in the header."""

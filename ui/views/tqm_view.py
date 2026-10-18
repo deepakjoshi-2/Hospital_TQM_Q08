@@ -145,19 +145,99 @@ class TQMView(ctk.CTkFrame):
         super().destroy()
 
     def _build_tabview(self) -> None:
-        """Construct multi-tab container for all 6 TQM tools."""
-        self.tabview = ctk.CTkTabview(self, corner_radius=12)
+        """Construct responsive two-row tab container for all 7 TQM quality tools."""
+        self.tabview = ctk.CTkFrame(
+            self,
+            corner_radius=12,
+            fg_color=("white", "#181A26"),
+            border_width=1,
+            border_color=("#E2E8F0", "#26293B"),
+        )
         self.tabview.pack(fill="both", expand=True, padx=24, pady=(0, 20))
 
-        # 7 Quality Engineering Tabs
-        self.tab_fmea = self.tabview.add("1. FMEA Risk Matrix (RPN)")
-        self.tab_sipoc = self.tabview.add("2. SIPOC Process Map")
-        self.tab_ctq = self.tabview.add("3. CTQ Quality Tree")
-        self.tab_checksheet = self.tabview.add("4. Defect Checksheet Log")
-        self.tab_pareto = self.tabview.add("5. Pareto & Root Cause (Fishbone)")
-        self.tab_pdca = self.tabview.add("6. PDCA Improvement Cycles")
-        self.tab_summary = self.tabview.add("7. Quality Improvement Summary")
+        # Two-Row Navigation Header Frame
+        self.tab_nav_frame = ctk.CTkFrame(
+            self.tabview,
+            fg_color=("#F8FAFC", "#12141F"),
+            corner_radius=10,
+            border_width=1,
+            border_color=("#E2E8F0", "#26293B"),
+        )
+        self.tab_nav_frame.pack(fill="x", padx=12, pady=(12, 8))
 
+        # Row 1: Core Quality Planning & Process Definitions (4 tabs)
+        r1 = ctk.CTkFrame(self.tab_nav_frame, fg_color="transparent")
+        r1.pack(fill="x", padx=6, pady=(6, 3))
+        r1.grid_columnconfigure((0, 1, 2, 3), weight=1, uniform="tqm_r1")
+
+        # Row 2: Root-Cause Analytics, PDCA & Executive Trace (3 tabs)
+        r2 = ctk.CTkFrame(self.tab_nav_frame, fg_color="transparent")
+        r2.pack(fill="x", padx=6, pady=(3, 6))
+        r2.grid_columnconfigure((0, 1, 2), weight=1, uniform="tqm_r2")
+
+        # Tab Content Container
+        self.tab_content_area = ctk.CTkFrame(self.tabview, fg_color="transparent")
+        self.tab_content_area.pack(fill="both", expand=True, padx=8, pady=(0, 8))
+
+        # 7 Distinct Tab Content Frames
+        self.tab_fmea = ctk.CTkFrame(self.tab_content_area, fg_color="transparent")
+        self.tab_sipoc = ctk.CTkFrame(self.tab_content_area, fg_color="transparent")
+        self.tab_ctq = ctk.CTkFrame(self.tab_content_area, fg_color="transparent")
+        self.tab_checksheet = ctk.CTkFrame(self.tab_content_area, fg_color="transparent")
+        self.tab_pareto = ctk.CTkFrame(self.tab_content_area, fg_color="transparent")
+        self.tab_pdca = ctk.CTkFrame(self.tab_content_area, fg_color="transparent")
+        self.tab_summary = ctk.CTkFrame(self.tab_content_area, fg_color="transparent")
+
+        self.tab_frames = {
+            "1. FMEA Risk Matrix (RPN)": self.tab_fmea,
+            "2. SIPOC Process Map": self.tab_sipoc,
+            "3. CTQ Quality Tree": self.tab_ctq,
+            "4. Defect Checksheet Log": self.tab_checksheet,
+            "5. Pareto & Root Cause (Fishbone)": self.tab_pareto,
+            "6. PDCA Improvement Cycles": self.tab_pdca,
+            "7. Quality Improvement Summary": self.tab_summary,
+        }
+
+        self.tab_buttons: Dict[str, ctk.CTkButton] = {}
+        self.active_tab_key = "1. FMEA Risk Matrix (RPN)"
+
+        row1_tabs = [
+            ("1. FMEA Risk Matrix (RPN)", 0),
+            ("2. SIPOC Process Map", 1),
+            ("3. CTQ Quality Tree", 2),
+            ("4. Defect Checksheet Log", 3),
+        ]
+        row2_tabs = [
+            ("5. Pareto & Root Cause (Fishbone)", 0),
+            ("6. PDCA Improvement Cycles", 1),
+            ("7. Quality Improvement Summary", 2),
+        ]
+
+        for tab_name, col in row1_tabs:
+            btn = ctk.CTkButton(
+                r1,
+                text=tab_name,
+                font=ctk.CTkFont(size=11, weight="bold"),
+                height=36,
+                corner_radius=8,
+                command=lambda k=tab_name: self.switch_tab(k),
+            )
+            btn.grid(row=0, column=col, padx=3, pady=2, sticky="nsew")
+            self.tab_buttons[tab_name] = btn
+
+        for tab_name, col in row2_tabs:
+            btn = ctk.CTkButton(
+                r2,
+                text=tab_name,
+                font=ctk.CTkFont(size=11, weight="bold"),
+                height=36,
+                corner_radius=8,
+                command=lambda k=tab_name: self.switch_tab(k),
+            )
+            btn.grid(row=0, column=col, padx=3, pady=2, sticky="nsew")
+            self.tab_buttons[tab_name] = btn
+
+        # Render all tabs content
         self._render_fmea_tab()
         self._render_sipoc_tab()
         self._render_ctq_tab()
@@ -165,6 +245,47 @@ class TQMView(ctk.CTkFrame):
         self._render_pareto_tab()
         self._render_pdca_tab()
         self._render_summary_tab()
+
+        # Show initial active tab (Tab 1)
+        self._update_tab_button_styles()
+        self.tab_fmea.pack(fill="both", expand=True)
+
+        # Backward compatibility proxy
+        self.tabview.set = self.switch_tab
+        self.tabview.get = lambda: self.active_tab_key
+
+    def switch_tab(self, tab_key: str) -> None:
+        """Switch active TQM tab view without resetting or recreating any child widgets."""
+        if tab_key not in self.tab_frames or tab_key == self.active_tab_key:
+            return
+
+        # Hide old frame
+        if self.active_tab_key in self.tab_frames:
+            self.tab_frames[self.active_tab_key].pack_forget()
+
+        # Show new frame
+        self.active_tab_key = tab_key
+        self.tab_frames[tab_key].pack(fill="both", expand=True)
+        self._update_tab_button_styles()
+
+    def _update_tab_button_styles(self) -> None:
+        """Update active and inactive tab button appearances."""
+        for name, btn in self.tab_buttons.items():
+            if name == self.active_tab_key:
+                btn.configure(
+                    fg_color="#0284C7",
+                    text_color="#FFFFFF",
+                    hover_color="#0369A1",
+                    border_width=0,
+                )
+            else:
+                btn.configure(
+                    fg_color=("#F1F5F9", "#1E202E"),
+                    text_color=("#475569", "#94A3B8"),
+                    hover_color=("#E2E8F0", "#334155"),
+                    border_width=1,
+                    border_color=("#E2E8F0", "#334155"),
+                )
 
     def _get_theme_colors(self) -> Dict[str, str]:
         """Compute theme-adaptive colors for Matplotlib figures."""
@@ -1652,7 +1773,7 @@ class TQMView(ctk.CTkFrame):
             ).pack(anchor="center")
 
     def refresh_all(self) -> None:
-        """Refresh all 7 quality tabs."""
+        """Refresh all 7 quality tabs while preserving active tab view."""
         self._close_active_figures()
         self._render_fmea_tab()
         self._render_sipoc_tab()
@@ -1661,4 +1782,13 @@ class TQMView(ctk.CTkFrame):
         self._render_pareto_tab()
         self._render_pdca_tab()
         self._render_summary_tab()
+
+        # Re-pack the active tab frame
+        if hasattr(self, "tab_frames") and hasattr(self, "active_tab_key") and self.active_tab_key in self.tab_frames:
+            for k, f in self.tab_frames.items():
+                if k != self.active_tab_key:
+                    f.pack_forget()
+            self.tab_frames[self.active_tab_key].pack(fill="both", expand=True)
+            self._update_tab_button_styles()
+
         self._show_notice("TQM Quality Toolkit successfully refreshed.")

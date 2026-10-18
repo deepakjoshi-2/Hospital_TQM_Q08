@@ -125,7 +125,7 @@ class DashboardView(ctk.CTkFrame):
             hover_color="#0369A1",
             height=36,
             corner_radius=8,
-            command=lambda: self._trigger_nav("Appointments"),
+            command=self._open_book_appointment_modal,
         )
         new_appt_btn.pack(side="right", padx=(8, 0))
 
@@ -257,13 +257,74 @@ class DashboardView(ctk.CTkFrame):
 
         appts = self.metrics["recent_appointments"]
         if not appts:
-            empty_lbl = ctk.CTkLabel(
+            empty_card = ctk.CTkFrame(
                 rows_container,
-                text=f"No outpatient appointments scheduled for today ({today_label_date}).",
-                font=ctk.CTkFont(size=13),
-                text_color=("#64748B", "#94A3B8"),
+                corner_radius=10,
+                fg_color=("#F8FAFC", "#181A26"),
+                border_width=1,
+                border_color=("#E2E8F0", "#26293B"),
             )
-            empty_lbl.pack(pady=30)
+            empty_card.pack(fill="both", expand=True, padx=12, pady=20)
+
+            # Calendar visual icon badge
+            cal_icon = ctk.CTkLabel(
+                empty_card,
+                text="📅",
+                font=ctk.CTkFont(size=36),
+                text_color=("#0284C7", "#38BDF8"),
+            )
+            cal_icon.pack(pady=(22, 6))
+
+            # Main Heading
+            heading = ctk.CTkLabel(
+                empty_card,
+                text="No appointments scheduled for today",
+                font=ctk.CTkFont(size=15, weight="bold"),
+                text_color=("#0F172A", "#F8FAFC"),
+            )
+            heading.pack(pady=(0, 4))
+
+            # Helpful dynamic explanation
+            sub_msg = ctk.CTkLabel(
+                empty_card,
+                text=(
+                    f"There are currently no outpatient consultations booked for {today_label_date}.\n"
+                    "When patient appointments are scheduled for today, they will automatically appear here."
+                ),
+                font=ctk.CTkFont(size=12),
+                text_color=("#64748B", "#94A3B8"),
+                justify="center",
+            )
+            sub_msg.pack(pady=(0, 16))
+
+            # Action Buttons Row
+            act_box = ctk.CTkFrame(empty_card, fg_color="transparent")
+            act_box.pack(pady=(0, 22))
+
+            book_btn = ctk.CTkButton(
+                act_box,
+                text="＋ Book Appointment",
+                font=ctk.CTkFont(size=12, weight="bold"),
+                fg_color="#0284C7",
+                hover_color="#0369A1",
+                height=34,
+                corner_radius=8,
+                command=self._open_book_appointment_modal,
+            )
+            book_btn.pack(side="left", padx=6)
+
+            roster_btn = ctk.CTkButton(
+                act_box,
+                text="View Full Roster →",
+                font=ctk.CTkFont(size=12, weight="bold"),
+                fg_color=("#E2E8F0", "#334155"),
+                text_color=("#0F172A", "#F8FAFC"),
+                hover_color=("#CBD5E1", "#475569"),
+                height=34,
+                corner_radius=8,
+                command=lambda: self._trigger_nav("Appointments"),
+            )
+            roster_btn.pack(side="left", padx=6)
         else:
             for item in appts:
                 self._render_table_row(rows_container, item)
@@ -439,3 +500,26 @@ class DashboardView(ctk.CTkFrame):
         """Call navigation handler if supplied."""
         if self.on_navigate:
             self.on_navigate(view_name)
+
+    def _open_book_appointment_modal(self) -> None:
+        """Open the real appointment booking modal and refresh dashboard on success."""
+        from ui.components.appointment_modals import AppointmentFormModal
+
+        AppointmentFormModal(
+            self.winfo_toplevel(),
+            appointment_data=None,
+            on_success=self._on_appointment_booked,
+        )
+
+    def _on_appointment_booked(self, msg: str = "") -> None:
+        """Callback after appointment is booked: reload live database metrics and re-render."""
+        self.refresh_dashboard()
+
+    def refresh_dashboard(self) -> None:
+        """Fetch fresh live metrics from SQLite and rebuild dashboard components."""
+        self.metrics = self._fetch_live_metrics()
+        for w in self.winfo_children():
+            w.destroy()
+        self._build_header()
+        self._build_kpi_row()
+        self._build_main_sections()
