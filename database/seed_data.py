@@ -201,16 +201,22 @@ def seed_database(db_path: Optional[str] = None) -> None:
             ("Night Operations", "Visual eye strain & fatigue", "Operator error rate rises after 8 PM", "Bright monochromatic white UI only", 6, 8, 4, 192, "High-contrast Dark/Light toggle (Q08 Core)", 6, 2, 2, 24),
         ]
 
-        cursor.executemany(
-            """
-            INSERT OR IGNORE INTO tqm_fmea_records (
-                process_step, failure_mode, failure_effect, potential_cause,
-                severity_s, occurrence_o, detection_d, rpn, mitigation_action,
-                target_severity, target_occurrence, target_detection, target_rpn
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-            """,
-            fmea_data,
-        )
+        for item in fmea_data:
+            cursor.execute(
+                "SELECT id FROM tqm_fmea_records WHERE process_step = ? AND failure_mode = ? LIMIT 1;",
+                (item[0], item[1]),
+            )
+            if not cursor.fetchone():
+                cursor.execute(
+                    """
+                    INSERT INTO tqm_fmea_records (
+                        process_step, failure_mode, failure_effect, potential_cause,
+                        severity_s, occurrence_o, detection_d, rpn, mitigation_action,
+                        target_severity, target_occurrence, target_detection, target_rpn
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                    """,
+                    item,
+                )
 
 
 if __name__ == "__main__":
