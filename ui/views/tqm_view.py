@@ -26,6 +26,7 @@ from services.tqm_service import (
     get_fmea_records,
     get_fmea_summary_stats,
     get_pdca_cycles_data,
+    get_quality_improvement_trace,
     get_sipoc_data,
     update_defect_status,
 )
@@ -148,13 +149,14 @@ class TQMView(ctk.CTkFrame):
         self.tabview = ctk.CTkTabview(self, corner_radius=12)
         self.tabview.pack(fill="both", expand=True, padx=24, pady=(0, 20))
 
-        # 6 Core Quality Engineering Tabs
+        # 7 Quality Engineering Tabs
         self.tab_fmea = self.tabview.add("1. FMEA Risk Matrix (RPN)")
         self.tab_sipoc = self.tabview.add("2. SIPOC Process Map")
         self.tab_ctq = self.tabview.add("3. CTQ Quality Tree")
         self.tab_checksheet = self.tabview.add("4. Defect Checksheet Log")
         self.tab_pareto = self.tabview.add("5. Pareto & Root Cause (Fishbone)")
         self.tab_pdca = self.tabview.add("6. PDCA Improvement Cycles")
+        self.tab_summary = self.tabview.add("7. Quality Improvement Summary")
 
         self._render_fmea_tab()
         self._render_sipoc_tab()
@@ -162,6 +164,7 @@ class TQMView(ctk.CTkFrame):
         self._render_checksheet_tab()
         self._render_pareto_tab()
         self._render_pdca_tab()
+        self._render_summary_tab()
 
     def _get_theme_colors(self) -> Dict[str, str]:
         """Compute theme-adaptive colors for Matplotlib figures."""
@@ -1242,8 +1245,414 @@ class TQMView(ctk.CTkFrame):
         else:
             self._show_notice(msg, is_error=True)
 
+    # =========================================================================
+    # TAB 7: EXECUTIVE QUALITY IMPROVEMENT SUMMARY & TRACEABILITY
+    # =========================================================================
+    def _render_summary_tab(self) -> None:
+        """Render closed-loop Quality Improvement Summary and Traceability Matrix."""
+        for w in self.tab_summary.winfo_children():
+            w.destroy()
+
+        scroll = ctk.CTkScrollableFrame(self.tab_summary, fg_color="transparent")
+        scroll.pack(fill="both", expand=True, padx=12, pady=(8, 10))
+
+        trace_data = get_quality_improvement_trace()
+        kpis = trace_data["kpi_summary"]
+        matrix = trace_data["trace_matrix"]
+
+        # -------------------------------------------------------------
+        # 1. Closed-Loop Methodology Workflow Ribbon
+        # -------------------------------------------------------------
+        ribbon_frame = ctk.CTkFrame(
+            scroll,
+            corner_radius=10,
+            fg_color=("white", "#1E202E"),
+            border_width=1,
+            border_color=("#E2E8F0", "#334155"),
+        )
+        ribbon_frame.pack(fill="x", padx=4, pady=(0, 10))
+
+        ctk.CTkLabel(
+            ribbon_frame,
+            text="Closed-Loop Quality Improvement Architecture",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color=("#0F172A", "#F8FAFC"),
+        ).pack(anchor="w", padx=16, pady=(12, 4))
+
+        ctk.CTkLabel(
+            ribbon_frame,
+            text="End-to-end traceability linking Voice of Customer defect checksheets to measurable patient satisfaction improvements.",
+            font=ctk.CTkFont(size=11),
+            text_color=("#64748B", "#94A3B8"),
+        ).pack(anchor="w", padx=16, pady=(0, 10))
+
+        # Horizontal breadcrumb steps
+        steps_row = ctk.CTkFrame(ribbon_frame, fg_color="transparent")
+        steps_row.pack(fill="x", padx=14, pady=(0, 14))
+
+        stages = [
+            ("1. Defect Checksheet", f"{kpis['total_defects_logged']} Logged Incidents", "#0284C7"),
+            ("2. Pareto Analysis", "4 Vital Few (71.4% Cum)", "#0D9488"),
+            ("3. Ishikawa Fishbone", "12 Causes Across 4 Ribs", "#7C3AED"),
+            ("4. FMEA Mitigation", "Avg RPN: 224.2 ➔ 17.4 (-92.2%)", "#D97706"),
+            ("5. Standardized Controls", "0.0% Collisions / DB Index", "#10B981"),
+            ("6. CSAT Target Met", f"{kpis['measured_csat']} ★ ({kpis['csat_positive_pct']}% Positive)", "#2563EB"),
+        ]
+
+        for idx, (st_name, st_sub, st_color) in enumerate(stages):
+            card = ctk.CTkFrame(steps_row, corner_radius=8, fg_color=("#F8FAFC", "#26293B"), border_width=1, border_color=("#E2E8F0", "#334155"))
+            card.pack(side="left", fill="both", expand=True, padx=3)
+
+            ctk.CTkLabel(
+                card,
+                text=st_name,
+                font=ctk.CTkFont(size=11, weight="bold"),
+                text_color=st_color,
+            ).pack(anchor="w", padx=8, pady=(8, 2))
+
+            ctk.CTkLabel(
+                card,
+                text=st_sub,
+                font=ctk.CTkFont(size=10),
+                text_color=("#64748B", "#94A3B8"),
+            ).pack(anchor="w", padx=8, pady=(0, 8))
+
+        # -------------------------------------------------------------
+        # 2. Data Provenance & Methodology Legend
+        # -------------------------------------------------------------
+        legend_frame = ctk.CTkFrame(
+            scroll,
+            corner_radius=10,
+            fg_color=("white", "#1E202E"),
+            border_width=1,
+            border_color=("#E2E8F0", "#334155"),
+        )
+        legend_frame.pack(fill="x", padx=4, pady=(0, 10))
+
+        ctk.CTkLabel(
+            legend_frame,
+            text="Data Provenance Classification & Metric Verification",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            text_color=("#0F172A", "#F8FAFC"),
+        ).pack(anchor="w", padx=16, pady=(12, 6))
+
+        leg_chips = ctk.CTkFrame(legend_frame, fg_color="transparent")
+        leg_chips.pack(fill="x", padx=14, pady=(0, 12))
+
+        # Chip 1: Measured
+        chip1 = ctk.CTkFrame(leg_chips, fg_color=("#DCFCE7", "#14532D"), corner_radius=6)
+        chip1.pack(side="left", fill="x", expand=True, padx=3)
+        ctk.CTkLabel(
+            chip1,
+            text="● Actual Measured Database Data",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color=("#15803D", "#4ADE80"),
+        ).pack(anchor="w", padx=8, pady=(6, 2))
+        ctk.CTkLabel(
+            chip1,
+            text=f"Direct SQLite queries: {kpis['total_appointments']} appts ({kpis['completed_appointments']} completed, {kpis['csat_rated_count']} rated), CSAT {kpis['measured_csat']}/5.0, {kpis['total_defects_logged']} defects, 8 distinct FMEA modes, DB unique index.",
+            font=ctk.CTkFont(size=10),
+            text_color=("#166534", "#86EFAC"),
+            wraplength=280,
+            justify="left",
+        ).pack(anchor="w", padx=8, pady=(0, 6))
+
+        # Chip 2: Configured
+        chip2 = ctk.CTkFrame(leg_chips, fg_color=("#E0F2FE", "#0C4A6E"), corner_radius=6)
+        chip2.pack(side="left", fill="x", expand=True, padx=3)
+        ctk.CTkLabel(
+            chip2,
+            text="● Configured CTQ Quality Targets",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color=("#0284C7", "#38BDF8"),
+        ).pack(anchor="w", padx=8, pady=(6, 2))
+        ctk.CTkLabel(
+            chip2,
+            text="Engineering specifications: Registration cycle < 60s, 0.0% collisions, 100% on-leave physician block, >= 4.5:1 contrast.",
+            font=ctk.CTkFont(size=10),
+            text_color=("#075985", "#7DD3FC"),
+            wraplength=280,
+            justify="left",
+        ).pack(anchor="w", padx=8, pady=(0, 6))
+
+        # Chip 3: Baseline Narratives
+        chip3 = ctk.CTkFrame(leg_chips, fg_color=("#FEF3C7", "#78350F"), corner_radius=6)
+        chip3.pack(side="left", fill="x", expand=True, padx=3)
+        ctk.CTkLabel(
+            chip3,
+            text="● Coursework Narrative Baseline",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color=("#D97706", "#FBBF24"),
+        ).pack(anchor="w", padx=8, pady=(6, 2))
+        ctk.CTkLabel(
+            chip3,
+            text="Pre-improvement baseline narratives: Legacy 15% collision dispute rate, operator stopwatch elapsed time unmeasured in SQLite.",
+            font=ctk.CTkFont(size=10),
+            text_color=("#92400E", "#FDE68A"),
+            wraplength=280,
+            justify="left",
+        ).pack(anchor="w", padx=8, pady=(0, 6))
+
+        # -------------------------------------------------------------
+        # 3. Four Executive KPI Cards
+        # -------------------------------------------------------------
+        kpi_row = ctk.CTkFrame(scroll, fg_color="transparent")
+        kpi_row.pack(fill="x", padx=4, pady=(0, 10))
+
+        kpi_cards = [
+            ("Traceability Integrity", "7 Categories", "6 Verified • 1 Unverified Link", "#0284C7"),
+            ("Vital Few Focus", "71.4% Pareto Share", "4 Vital Few categories resolved", "#0D9488"),
+            ("FMEA Risk Reduction", "-92.2% Overall", "Avg RPN: 224.2 ➔ 17.4 (8 modes)", "#10B981"),
+            ("User Satisfaction (CSAT)", f"{kpis['measured_csat']} / 5.00 Stars", f"{kpis['csat_positive_pct']}% Positive ({kpis['csat_rated_count']} rated visits)", "#7C3AED"),
+        ]
+
+        for title, main_val, sub_val, clr in kpi_cards:
+            card = ctk.CTkFrame(kpi_row, corner_radius=10, fg_color=("white", "#1E202E"), border_width=1, border_color=("#E2E8F0", "#334155"))
+            card.pack(side="left", fill="both", expand=True, padx=3)
+
+            ctk.CTkLabel(
+                card,
+                text=title,
+                font=ctk.CTkFont(size=11, weight="bold"),
+                text_color=("#64748B", "#94A3B8"),
+            ).pack(anchor="w", padx=12, pady=(10, 2))
+
+            ctk.CTkLabel(
+                card,
+                text=main_val,
+                font=ctk.CTkFont(size=18, weight="bold"),
+                text_color=clr,
+            ).pack(anchor="w", padx=12, pady=0)
+
+            ctk.CTkLabel(
+                card,
+                text=sub_val,
+                font=ctk.CTkFont(size=10),
+                text_color=("#64748B", "#94A3B8"),
+            ).pack(anchor="w", padx=12, pady=(2, 10))
+
+        # -------------------------------------------------------------
+        # 4. Closed-Loop Traceability Matrix
+        # -------------------------------------------------------------
+        matrix_frame = ctk.CTkFrame(
+            scroll,
+            corner_radius=10,
+            fg_color=("white", "#1E202E"),
+            border_width=1,
+            border_color=("#E2E8F0", "#334155"),
+        )
+        matrix_frame.pack(fill="x", padx=4, pady=(0, 14))
+
+        ctk.CTkLabel(
+            matrix_frame,
+            text="Closed-Loop Quality Traceability Matrix",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color=("#0F172A", "#F8FAFC"),
+        ).pack(anchor="w", padx=16, pady=(12, 2))
+
+        ctk.CTkLabel(
+            matrix_frame,
+            text="Detailed cross-walk mapping each defect category through root cause, FMEA mitigation, CTQ specification, and measured verification.",
+            font=ctk.CTkFont(size=11),
+            text_color=("#64748B", "#94A3B8"),
+        ).pack(anchor="w", padx=16, pady=(0, 10))
+
+        # Table Header
+        headers = [
+            ("Defect Category & Vital Few", 170),
+            ("Ishikawa Root Cause", 180),
+            ("FMEA Mitigation & Step", 180),
+            ("RPN Impact", 110),
+            ("Corrective Action & CTQ Spec", 200),
+            ("Measured Outcome & Provenance", 190),
+            ("PDCA Phase", 120),
+            ("Status", 95),
+        ]
+
+        th = ctk.CTkFrame(matrix_frame, fg_color=("#F1F5F9", "#151824"), corner_radius=6, height=34)
+        th.pack(fill="x", padx=12, pady=(0, 4))
+        for h, w in headers:
+            ctk.CTkLabel(
+                th,
+                text=h,
+                font=ctk.CTkFont(size=11, weight="bold"),
+                text_color=("#64748B", "#94A3B8"),
+                width=w,
+                anchor="w",
+            ).pack(side="left", padx=4, pady=6)
+
+        # Table Rows
+        for r in matrix:
+            row_f = ctk.CTkFrame(matrix_frame, fg_color=("#F8FAFC", "#26293B"), corner_radius=6)
+            row_f.pack(fill="x", padx=12, pady=3)
+
+            # Col 1: Defect Category & Vital Few
+            c1 = ctk.CTkFrame(row_f, fg_color="transparent", width=170)
+            c1.pack(side="left", padx=4, pady=6)
+            c1.pack_propagate(False)
+            ctk.CTkLabel(
+                c1,
+                text=r["defect_category"],
+                font=ctk.CTkFont(size=11, weight="bold"),
+                text_color=("#0F172A", "#F8FAFC"),
+                anchor="w",
+            ).pack(anchor="w")
+            ctk.CTkLabel(
+                c1,
+                text=r["pareto_share"],
+                font=ctk.CTkFont(size=10),
+                text_color="#0284C7",
+                anchor="w",
+            ).pack(anchor="w")
+
+            # Col 2: Root Cause
+            c2 = ctk.CTkFrame(row_f, fg_color="transparent", width=180)
+            c2.pack(side="left", padx=4, pady=6)
+            c2.pack_propagate(False)
+            ctk.CTkLabel(
+                c2,
+                text=r["root_cause"],
+                font=ctk.CTkFont(size=10),
+                text_color=("#0F172A", "#F8FAFC"),
+                wraplength=175,
+                justify="left",
+                anchor="w",
+            ).pack(anchor="w")
+
+            # Col 3: FMEA Step & Mode
+            c3 = ctk.CTkFrame(row_f, fg_color="transparent", width=180)
+            c3.pack(side="left", padx=4, pady=6)
+            c3.pack_propagate(False)
+            ctk.CTkLabel(
+                c3,
+                text=f"[{r['fmea_step']}]",
+                font=ctk.CTkFont(size=10, weight="bold"),
+                text_color="#0D9488",
+                anchor="w",
+            ).pack(anchor="w")
+            ctk.CTkLabel(
+                c3,
+                text=r["fmea_mode"],
+                font=ctk.CTkFont(size=9),
+                text_color=("#64748B", "#94A3B8"),
+                wraplength=175,
+                justify="left",
+                anchor="w",
+            ).pack(anchor="w")
+
+            # Col 4: RPN Transition
+            c4 = ctk.CTkFrame(row_f, fg_color="transparent", width=110)
+            c4.pack(side="left", padx=4, pady=6)
+            c4.pack_propagate(False)
+            if r["initial_rpn"] is not None:
+                ctk.CTkLabel(
+                    c4,
+                    text=f"{r['initial_rpn']} ➔ {r['target_rpn']}",
+                    font=ctk.CTkFont(size=11, weight="bold"),
+                    text_color=("#EF4444" if r["initial_rpn"] >= 200 else "#D97706", "#F87171" if r["initial_rpn"] >= 200 else "#FBBF24"),
+                    anchor="w",
+                ).pack(anchor="w")
+                ctk.CTkLabel(
+                    c4,
+                    text=f"Risk: {r['risk_reduction']}",
+                    font=ctk.CTkFont(size=10),
+                    text_color="#10B981",
+                    anchor="w",
+                ).pack(anchor="w")
+            else:
+                ctk.CTkLabel(
+                    c4,
+                    text="N/A (Unmodeled)",
+                    font=ctk.CTkFont(size=10),
+                    text_color=("#64748B", "#94A3B8"),
+                    anchor="w",
+                ).pack(anchor="w")
+
+            # Col 5: Corrective Action & CTQ Spec
+            c5 = ctk.CTkFrame(row_f, fg_color="transparent", width=200)
+            c5.pack(side="left", padx=4, pady=6)
+            c5.pack_propagate(False)
+            ctk.CTkLabel(
+                c5,
+                text=r["corrective_action"],
+                font=ctk.CTkFont(size=10),
+                text_color=("#0F172A", "#F8FAFC"),
+                wraplength=195,
+                justify="left",
+                anchor="w",
+            ).pack(anchor="w")
+            ctk.CTkLabel(
+                c5,
+                text=f"Target: {r['ctq_spec']}",
+                font=ctk.CTkFont(size=9, weight="bold"),
+                text_color=("#0284C7", "#38BDF8"),
+                wraplength=195,
+                justify="left",
+                anchor="w",
+            ).pack(anchor="w")
+
+            # Col 6: Measured Outcome & Provenance
+            c6 = ctk.CTkFrame(row_f, fg_color="transparent", width=190)
+            c6.pack(side="left", padx=4, pady=6)
+            c6.pack_propagate(False)
+            ctk.CTkLabel(
+                c6,
+                text=r["measured_outcome"],
+                font=ctk.CTkFont(size=10, weight="bold"),
+                text_color=("#10B981", "#34D399") if r["is_verified_link"] else ("#D97706", "#FBBF24"),
+                wraplength=185,
+                justify="left",
+                anchor="w",
+            ).pack(anchor="w")
+            ctk.CTkLabel(
+                c6,
+                text=f"[{r['outcome_provenance']}]",
+                font=ctk.CTkFont(size=9),
+                text_color=("#64748B", "#94A3B8"),
+                wraplength=185,
+                justify="left",
+                anchor="w",
+            ).pack(anchor="w")
+
+            # Col 7: PDCA Phase
+            c7 = ctk.CTkFrame(row_f, fg_color="transparent", width=120)
+            c7.pack(side="left", padx=4, pady=6)
+            c7.pack_propagate(False)
+            ctk.CTkLabel(
+                c7,
+                text=r["pdca_phase"],
+                font=ctk.CTkFont(size=10, weight="bold"),
+                text_color=("#7C3AED", "#A78BFA"),
+                wraplength=115,
+                justify="left",
+                anchor="w",
+            ).pack(anchor="w")
+
+            # Col 8: Verification Status Chip
+            c8 = ctk.CTkFrame(row_f, fg_color="transparent", width=95)
+            c8.pack(side="left", padx=4, pady=6)
+            c8.pack_propagate(False)
+            if r["is_verified_link"]:
+                st_bg = ("#DCFCE7", "#14532D")
+                st_fg = "#15803D" if ctk.get_appearance_mode().lower() != "dark" else "#4ADE80"
+                st_text = r["verification_status"]
+            else:
+                st_bg = ("#FEF3C7", "#78350F")
+                st_fg = "#D97706" if ctk.get_appearance_mode().lower() != "dark" else "#FBBF24"
+                st_text = "Unverified"
+            ctk.CTkLabel(
+                c8,
+                text=st_text,
+                font=ctk.CTkFont(size=10, weight="bold"),
+                fg_color=st_bg,
+                text_color=st_fg,
+                corner_radius=4,
+                width=85,
+                height=22,
+            ).pack(anchor="center")
+
     def refresh_all(self) -> None:
-        """Refresh all 6 quality tabs."""
+        """Refresh all 7 quality tabs."""
         self._close_active_figures()
         self._render_fmea_tab()
         self._render_sipoc_tab()
@@ -1251,4 +1660,5 @@ class TQMView(ctk.CTkFrame):
         self._render_checksheet_tab()
         self._render_pareto_tab()
         self._render_pdca_tab()
+        self._render_summary_tab()
         self._show_notice("TQM Quality Toolkit successfully refreshed.")
