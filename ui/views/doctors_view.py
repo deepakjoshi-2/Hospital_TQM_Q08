@@ -121,17 +121,18 @@ class DoctorsView(ctk.CTkFrame):
         clear_btn.pack(side="left", padx=(0, 10))
 
         # + Add Doctor Button (Prominent Action)
-        add_btn = ctk.CTkButton(
+        self.add_btn = ctk.CTkButton(
             ctrl_box,
             text="＋ Add Doctor",
             font=ctk.CTkFont(size=13, weight="bold"),
             fg_color="#0284C7",
             hover_color="#0369A1",
+            width=145,
             height=36,
             corner_radius=8,
             command=self._open_add_modal,
         )
-        add_btn.pack(side="left")
+        self.add_btn.pack(side="left")
 
     def _build_notification_banner(self) -> None:
         """Feedback toast/banner for immediate success and error reporting."""

@@ -86,18 +86,18 @@ class TQMView(ctk.CTkFrame):
         )
         course_chip.pack(side="left", padx=(0, 8))
 
-        refresh_btn = ctk.CTkButton(
+        self.refresh_btn = ctk.CTkButton(
             badge_box,
             text="🔄 Refresh Toolkit",
             font=ctk.CTkFont(size=12, weight="bold"),
             fg_color="#0284C7",
             hover_color="#0369A1",
             height=30,
-            width=120,
+            width=135,
             corner_radius=6,
             command=self.refresh_all,
         )
-        refresh_btn.pack(side="left")
+        self.refresh_btn.pack(side="left")
 
     def _build_notification_banner(self) -> None:
         """Feedback toast/banner for immediate user notifications."""

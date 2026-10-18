@@ -11,6 +11,7 @@ from config.constants import (
 )
 from database.seed_data import seed_database
 from services.profile_service import get_user_profile
+from ui.components.scroll_manager import ScrollManager
 from ui.views import (
     DashboardView,
     PatientsView,
@@ -28,6 +29,9 @@ class HospitalApp(ctk.CTk):
 
     def __init__(self):
         super().__init__()
+
+        # Install centralized mouse-wheel scrolling across all views and modals
+        ScrollManager.install(self)
 
         # Initial Appearance & Theme configuration
         ctk.set_appearance_mode("Dark")

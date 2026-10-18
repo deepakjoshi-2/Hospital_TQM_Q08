@@ -81,11 +81,15 @@ class AppointmentsView(ctk.CTkFrame):
         return results
 
     def _build_header(self) -> None:
-        """Header with search bar, status filter dropdown, clear button, and '+ Book Appointment' button."""
+        """Header with title, primary actions (Export CSV, Book Appointment), and dedicated filter bar."""
         self.header = ctk.CTkFrame(self, fg_color="transparent")
         self.header.pack(fill="x", padx=24, pady=(20, 10))
 
-        info_box = ctk.CTkFrame(self.header, fg_color="transparent")
+        # Row 1: Title & Subtitle on left, Primary Action Buttons on right
+        top_row = ctk.CTkFrame(self.header, fg_color="transparent")
+        top_row.pack(fill="x")
+
+        info_box = ctk.CTkFrame(top_row, fg_color="transparent")
         info_box.pack(side="left")
 
         title = ctk.CTkLabel(
@@ -104,76 +108,93 @@ class AppointmentsView(ctk.CTkFrame):
         )
         self.subtitle_lbl.pack(anchor="w", pady=(2, 0))
 
-        # Controls on the right: Search + Status Filter + Clear + Book Appointment
-        ctrl_box = ctk.CTkFrame(self.header, fg_color="transparent")
-        ctrl_box.pack(side="right")
+        # Primary Actions Panel on Top Right: Export CSV + Book Appointment
+        self.actions_box = ctk.CTkFrame(top_row, fg_color="transparent")
+        self.actions_box.pack(side="right")
+
+        # 📥 Export CSV Button
+        self.export_btn = ctk.CTkButton(
+            self.actions_box,
+            text="📥 Export CSV",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            fg_color=("#E2E8F0", "#334155"),
+            text_color=("#0F172A", "#F8FAFC"),
+            hover_color=("#CBD5E1", "#475569"),
+            width=120,
+            height=36,
+            corner_radius=8,
+            command=self._on_export_csv,
+        )
+        self.export_btn.pack(side="left", padx=(0, 10))
+
+        # + Book Appointment Button (Prominent Action) - Sized generously to guarantee full label visibility
+        self.add_btn = ctk.CTkButton(
+            self.actions_box,
+            text="＋ Book Appointment",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            fg_color="#0284C7",
+            hover_color="#0369A1",
+            width=175,
+            height=36,
+            corner_radius=8,
+            command=self._open_add_modal,
+        )
+        self.add_btn.pack(side="left")
+
+        # Row 2: Search Entry + Status Filter + Clear Button
+        self.filter_row = ctk.CTkFrame(self.header, fg_color="transparent")
+        self.filter_row.pack(fill="x", pady=(12, 0))
 
         # Search Entry
         self.search_entry = ctk.CTkEntry(
-            ctrl_box,
-            placeholder_text="Search patient, doctor, code...",
-            width=185,
-            height=36,
+            self.filter_row,
+            placeholder_text="Search patient, doctor, code, date...",
+            width=250,
+            height=34,
             corner_radius=8,
         )
-        self.search_entry.pack(side="left", padx=(0, 6))
+        self.search_entry.pack(side="left", padx=(0, 8))
         self.search_entry.bind("<Return>", lambda event: self._on_search())
+
+        # Search Trigger Button
+        self.search_btn = ctk.CTkButton(
+            self.filter_row,
+            text="🔍 Search",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            width=80,
+            height=34,
+            corner_radius=8,
+            command=self._on_search,
+        )
+        self.search_btn.pack(side="left", padx=(0, 8))
 
         # Status Filter Dropdown
         status_options = ["All Statuses"] + APPOINTMENT_STATUSES
         self.status_dropdown = ctk.CTkOptionMenu(
-            ctrl_box,
+            self.filter_row,
             values=status_options,
             command=self._on_status_filter,
-            width=135,
-            height=36,
+            width=150,
+            height=34,
             corner_radius=8,
         )
         self.status_dropdown.set("All Statuses")
-        self.status_dropdown.pack(side="left", padx=(0, 6))
+        self.status_dropdown.pack(side="left", padx=(0, 8))
 
         # Clear Filter Button
-        clear_btn = ctk.CTkButton(
-            ctrl_box,
+        self.clear_btn = ctk.CTkButton(
+            self.filter_row,
             text="✕ Clear",
             font=ctk.CTkFont(size=12),
             fg_color=("#E2E8F0", "#334155"),
             text_color=("#0F172A", "#F8FAFC"),
             hover_color=("#CBD5E1", "#475569"),
-            width=65,
-            height=36,
+            width=75,
+            height=34,
             corner_radius=8,
             command=self._on_clear_filters,
         )
-        clear_btn.pack(side="left", padx=(0, 8))
-
-        # 📥 Export CSV Button
-        self.export_btn = ctk.CTkButton(
-            ctrl_box,
-            text="📥 Export CSV",
-            font=ctk.CTkFont(size=12),
-            fg_color=("#E2E8F0", "#334155"),
-            text_color=("#0F172A", "#F8FAFC"),
-            hover_color=("#CBD5E1", "#475569"),
-            width=95,
-            height=36,
-            corner_radius=8,
-            command=self._on_export_csv,
-        )
-        self.export_btn.pack(side="left", padx=(0, 8))
-
-        # + Book Appointment Button (Prominent Action)
-        add_btn = ctk.CTkButton(
-            ctrl_box,
-            text="＋ Book Appointment",
-            font=ctk.CTkFont(size=13, weight="bold"),
-            fg_color="#0284C7",
-            hover_color="#0369A1",
-            height=36,
-            corner_radius=8,
-            command=self._open_add_modal,
-        )
-        add_btn.pack(side="left")
+        self.clear_btn.pack(side="left")
 
     def _build_notification_banner(self) -> None:
         """Feedback toast/banner for immediate success and error reporting."""
