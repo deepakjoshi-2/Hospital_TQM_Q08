@@ -1,7 +1,10 @@
-"""Centralized, leak-safe mouse-wheel scrolling manager for CustomTkinter.
+"""Centralized, leak-safe, DPI-aware mouse-wheel scrolling manager for CustomTkinter.
 
 Provides reliable mouse-wheel scrolling across all application views and modals:
-- Directs wheel scrolling to the widget directly under the mouse pointer.
+- Directs wheel scrolling to the scrollable container beneath the mouse pointer.
+- Fully DPI-aware coordinate mapping on Windows across any display scale factor (100%, 125%, 150%, 175%, 200%).
+- Robust multi-strategy resolution: leaf widget ancestry, card containers, pointer coordinates, and active view/modal context.
+- Natural desktop scroll increment (40px per 120-delta notch) for smooth, visible content movement.
 - Suppresses redundant per-frame global bindings to avoid callback accumulation.
 - Supports vertical scrolling and Shift + wheel horizontal scrolling.
 - Automatically respects nested scroll containers (inner container scrolls first).
@@ -11,7 +14,7 @@ Provides reliable mouse-wheel scrolling across all application views and modals:
 """
 import sys
 import tkinter as tk
-from typing import Optional
+from typing import Optional, List
 import customtkinter as ctk
 
 
@@ -21,6 +24,7 @@ class ScrollManager:
     _installed: bool = False
     _shift_pressed: bool = False
     _orig_init = None
+    _root_window: Optional[tk.Misc] = None
 
     @classmethod
     def install(cls, root: Optional[tk.Misc] = None) -> None:
@@ -29,6 +33,9 @@ class ScrollManager:
         Args:
             root: Root or toplevel window to bind global listeners to.
         """
+        if root is not None:
+            cls._root_window = root
+
         # Patch CTkScrollableFrame.__init__ to prevent redundant/leaking bind_all calls
         if cls._orig_init is None:
             cls._orig_init = ctk.CTkScrollableFrame.__init__
@@ -117,55 +124,174 @@ class ScrollManager:
 
     @classmethod
     def find_scrollable_container(cls, widget: tk.Misc) -> Optional[ctk.CTkScrollableFrame]:
-        """Locate the innermost active CTkScrollableFrame under the target widget.
+        """Locate the innermost active CTkScrollableFrame related to the target widget.
         
-        Walking up from the leaf widget guarantees that nested scrollable areas
-        take precedence over outer parent containers.
+        Climbs up the hierarchy from leaf widgets to ensure nested containers take precedence.
+        Also inspects widget attributes, canvas parents, and child containers.
         """
-        if cls.is_ignored_widget(widget):
+        if widget is None or cls.is_ignored_widget(widget):
             return None
 
         curr = widget
         while curr is not None:
             name = type(curr).__name__
 
+            # Direct match
             if isinstance(curr, ctk.CTkScrollableFrame) or name == "CTkScrollableFrame":
                 if cls.is_widget_visible(curr):
                     return curr
 
-            # Check if curr is the underlying Canvas of a CTkScrollableFrame
-            elif isinstance(curr, tk.Canvas):
-                for child in curr.children.values():
-                    if (isinstance(child, ctk.CTkScrollableFrame) or type(child).__name__ == "CTkScrollableFrame"):
+            # Underlying Canvas of a CTkScrollableFrame
+            if isinstance(curr, (tk.Canvas, ctk.windows.widgets.core_rendering.ctk_canvas.CTkCanvas)) or name in ("Canvas", "CTkCanvas"):
+                master = getattr(curr, "master", None)
+                if isinstance(master, ctk.CTkScrollableFrame) or type(master).__name__ == "CTkScrollableFrame":
+                    if cls.is_widget_visible(master):
+                        return master
+                for child in getattr(curr, "children", {}).values():
+                    if isinstance(child, ctk.CTkScrollableFrame) or type(child).__name__ == "CTkScrollableFrame":
                         if cls.is_widget_visible(child):
                             return child
 
+            # Outer _parent_frame of a CTkScrollableFrame or card container
+            for child in getattr(curr, "children", {}).values():
+                if isinstance(child, ctk.CTkScrollableFrame) or type(child).__name__ == "CTkScrollableFrame":
+                    if cls.is_widget_visible(child):
+                        return child
+                # Check canvas child of parent frame
+                if isinstance(child, tk.Canvas) or type(child).__name__ in ("Canvas", "CTkCanvas"):
+                    for sub in getattr(child, "children", {}).values():
+                        if isinstance(sub, ctk.CTkScrollableFrame) or type(sub).__name__ == "CTkScrollableFrame":
+                            if cls.is_widget_visible(sub):
+                                return sub
+
+            # Common view attributes referencing scrollable containers
+            for attr in ("rows_frame", "form_scroll", "scroll_frame", "scroll_container", "tqm_scroll"):
+                candidate = getattr(curr, attr, None)
+                if candidate is not None and (isinstance(candidate, ctk.CTkScrollableFrame) or type(candidate).__name__ == "CTkScrollableFrame"):
+                    if cls.is_widget_visible(candidate):
+                        return candidate
+
             curr = getattr(curr, "master", None)
+
+        return None
+
+    @classmethod
+    def _find_all_visible_scrollables(cls, root: tk.Misc) -> List[ctk.CTkScrollableFrame]:
+        """Find all viewable CTkScrollableFrames within a container hierarchy."""
+        results = []
+        if root is None or not hasattr(root, "winfo_exists") or not root.winfo_exists():
+            return results
+
+        if (isinstance(root, ctk.CTkScrollableFrame) or type(root).__name__ == "CTkScrollableFrame") and cls.is_widget_visible(root):
+            results.append(root)
+
+        for child in getattr(root, "children", {}).values():
+            results.extend(cls._find_all_visible_scrollables(child))
+        return results
+
+    @classmethod
+    def resolve_scroll_target(cls, event) -> Optional[ctk.CTkScrollableFrame]:
+        """Resolve the target CTkScrollableFrame dynamically and DPI-agnostically."""
+        # Strategy 1: Check event.widget directly
+        ev_widget = getattr(event, "widget", None)
+        if ev_widget is not None:
+            sf = cls.find_scrollable_container(ev_widget)
+            if sf is not None:
+                return sf
+
+        # Strategy 2: Pointer coordinate resolution with DPI awareness
+        root = cls._root_window
+        if root is None and ev_widget is not None and hasattr(ev_widget, "winfo_toplevel"):
+            root = ev_widget.winfo_toplevel()
+
+        if root is not None and hasattr(root, "winfo_exists") and root.winfo_exists():
+            scaling = 1.0
+            if hasattr(root, "_get_window_scaling"):
+                try:
+                    scaling = float(root._get_window_scaling())
+                except Exception:
+                    scaling = 1.0
+
+            x_root = getattr(event, "x_root", None)
+            y_root = getattr(event, "y_root", None)
+
+            candidates = []
+            if x_root is not None and y_root is not None:
+                # Raw coordinates
+                try:
+                    w1 = root.winfo_containing(x_root, y_root)
+                    if w1 is not None:
+                        candidates.append(w1)
+                except Exception:
+                    pass
+
+                # Scaled coordinates (when Windows delivers physical screen coordinates under high DPI)
+                if scaling != 1.0 and scaling > 0:
+                    try:
+                        w2 = root.winfo_containing(int(x_root / scaling), int(y_root / scaling))
+                        if w2 is not None and w2 not in candidates:
+                            candidates.append(w2)
+                    except Exception:
+                        pass
+
+            # winfo_pointerxy fallback
+            try:
+                px, py = root.winfo_pointerxy()
+                w3 = root.winfo_containing(px, py)
+                if w3 is not None and w3 not in candidates:
+                    candidates.append(w3)
+                if scaling != 1.0 and scaling > 0:
+                    w4 = root.winfo_containing(int(px / scaling), int(py / scaling))
+                    if w4 is not None and w4 not in candidates:
+                        candidates.append(w4)
+            except Exception:
+                pass
+
+            for c in candidates:
+                sf = cls.find_scrollable_container(c)
+                if sf is not None:
+                    return sf
+
+            # Strategy 3: Check active modal dialogs (CTkToplevel)
+            try:
+                for child in root.winfo_children():
+                    if isinstance(child, (ctk.CTkToplevel, tk.Toplevel)) and cls.is_widget_visible(child):
+                        modal_sfs = cls._find_all_visible_scrollables(child)
+                        if modal_sfs:
+                            return modal_sfs[0]
+            except Exception:
+                pass
+
+            # Strategy 4: Active view frame or root container contextual fallback
+            container = getattr(root, "current_view_frame", None) or root
+            if container is not None and cls.is_widget_visible(container):
+                view_sfs = cls._find_all_visible_scrollables(container)
+                if len(view_sfs) == 1:
+                    return view_sfs[0]
+                elif len(view_sfs) > 1:
+                    # Multi-container views (e.g. Dashboard): pick container closest to pointer
+                    best_sf = view_sfs[0]
+                    if x_root is not None and y_root is not None:
+                        for sf in view_sfs:
+                            try:
+                                sx = sf.winfo_rootx()
+                                sy = sf.winfo_rooty()
+                                sw = sf.winfo_width()
+                                sh = sf.winfo_height()
+                                # Test raw or scaled containment
+                                if (sx <= x_root <= sx + sw and sy <= y_root <= sy + sh) or \
+                                   (sx <= int(x_root / scaling) <= sx + sw and sy <= int(y_root / scaling) <= sy + sh):
+                                    return sf
+                            except Exception:
+                                pass
+                    return best_sf
+
         return None
 
     @classmethod
     def handle_mousewheel(cls, event) -> None:
         """Route mouse wheel event dynamically to the scrollable container under pointer."""
-        target_widget = None
-
-        # 1. Determine widget directly under the pointer coordinates
-        try:
-            if hasattr(event, "x_root") and hasattr(event, "y_root"):
-                w = getattr(event, "widget", None)
-                if hasattr(w, "winfo_containing"):
-                    target_widget = w.winfo_containing(event.x_root, event.y_root)
-        except Exception:
-            pass
-
-        # 2. Fallback to event.widget for synthetic test events
-        if target_widget is None and hasattr(event, "widget"):
-            target_widget = event.widget
-
-        if target_widget is None:
-            return
-
-        # 3. Locate innermost scrollable frame
-        sf = cls.find_scrollable_container(target_widget)
+        sf = cls.resolve_scroll_target(event)
         if sf is None:
             return
 
@@ -189,8 +315,9 @@ class ScrollManager:
             # Shift key detection (keyboard tracking or event state bitmask)
             is_shift = cls._shift_pressed or bool(getattr(event, "state", 0) & 0x0001)
 
-            # Standard smooth scroll increment
-            units = -int(delta / 6)
+            # Responsive desktop scroll increment (40px per 120-delta notch = 1 full row / 3 text lines)
+            step_pixels = 40
+            units = -int((delta / 120.0) * step_pixels)
             if units == 0:
                 units = -1 if delta > 0 else 1
 

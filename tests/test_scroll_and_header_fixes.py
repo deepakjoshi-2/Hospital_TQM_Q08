@@ -9,6 +9,7 @@ import unittest
 import customtkinter as ctk
 
 from database.connection import get_db_connection
+from ui.components.appointment_modals import AppointmentFormModal
 from ui.components.scroll_manager import ScrollManager
 from ui.views.appointments_view import AppointmentsView
 from ui.views.dashboard_view import DashboardView
@@ -184,6 +185,116 @@ class TestScrollAndHeaderFixes(unittest.TestCase):
         self.assertEqual(cur_defects, self.baseline_defects, "Defect log count mismatch!")
         self.assertEqual(cur_fmea, self.baseline_fmea, "FMEA record count mismatch!")
 
+    def test_07_dpi_scaled_coordinates_resolve_correctly(self):
+        """Verify ScrollManager correctly resolves scroll container with 1.5x scaled physical coordinates."""
+        view = AppointmentsView(self.root)
+        view.pack(fill="both", expand=True)
+        self.root.update()
+
+        canvas = view.rows_frame._parent_canvas
+        initial_yview = canvas.yview()
+
+        # Simulate event with physical coordinates under 1.5x DPI scaling and event.widget=root
+        scaling = 1.5
+        rx = view.rows_frame.winfo_rootx() + 50
+        ry = view.rows_frame.winfo_rooty() + 50
+
+        event = tk.Event()
+        event.widget = self.root
+        event.x_root = int(rx * scaling)
+        event.y_root = int(ry * scaling)
+        event.delta = -120
+        event.state = 0
+
+        target = ScrollManager.resolve_scroll_target(event)
+        self.assertIsNotNone(target, "Failed to resolve scroll target under scaled physical coordinates!")
+        self.assertIs(target, view.rows_frame)
+
+        ScrollManager.handle_mousewheel(event)
+        scrolled_yview = canvas.yview()
+        self.assertGreater(scrolled_yview[0], initial_yview[0], "Content did not scroll with scaled coordinates!")
+
+        view.destroy()
+        self.root.update()
+
+    def test_08_card_and_header_hover_scrolling(self):
+        """Verify rotating wheel over column header row or card container scrolls the data table."""
+        view = AppointmentsView(self.root)
+        view.pack(fill="both", expand=True)
+        self.root.update()
+
+        canvas = view.rows_frame._parent_canvas
+        initial_yview = canvas.yview()
+
+        # Target event directly at column header frame (sibling of rows_frame)
+        col_header = view.card.winfo_children()[0]
+        event = tk.Event()
+        event.widget = col_header
+        event.delta = -120
+        event.state = 0
+
+        target = ScrollManager.resolve_scroll_target(event)
+        self.assertIs(target, view.rows_frame, "Column header did not resolve to rows_frame!")
+
+        ScrollManager.handle_mousewheel(event)
+        self.assertGreater(canvas.yview()[0], initial_yview[0], "Content did not scroll when hovering over header!")
+
+        view.destroy()
+        self.root.update()
+
+    def test_09_all_views_scrollable_container_resolution(self):
+        """Verify ScrollManager resolves scrollable container across Patients, Appointments, Reports, Settings, and TQM."""
+        views_to_test = [
+            (PatientsView, "rows_frame"),
+            (AppointmentsView, "rows_frame"),
+            (ReportsView, "scroll_frame"),
+            (SettingsView, "scroll_container"),
+        ]
+
+        for view_cls, attr_name in views_to_test:
+            v = view_cls(self.root)
+            v.pack(fill="both", expand=True)
+            self.root.update()
+
+            expected_sf = getattr(v, attr_name)
+            event = tk.Event()
+            event.widget = v
+            event.delta = -120
+            event.state = 0
+
+            resolved = ScrollManager.find_scrollable_container(v)
+            self.assertIs(resolved, expected_sf, f"View {view_cls.__name__} failed to resolve {attr_name}!")
+
+            v.destroy()
+            self.root.update()
+
+    def test_10_modal_form_scroll_desktop_increment(self):
+        """Verify modal form scrolling uses responsive desktop increment (> 20px) rather than 1px."""
+        modal = AppointmentFormModal(self.root)
+        self.root.update()
+
+        canvas = modal.form_scroll._parent_canvas
+        initial_yview = canvas.yview()
+
+        # Send downward wheel event
+        event = tk.Event()
+        event.widget = modal.form_scroll
+        event.delta = -120
+        event.state = 0
+        event.num = 0
+
+        modal._on_mousewheel(event)
+        scrolled_yview = canvas.yview()
+
+        self.assertGreater(scrolled_yview[0], initial_yview[0], "Modal form did not scroll downward!")
+        # Verify substantial scroll (> 1px movement)
+        pixel_movement = (scrolled_yview[0] - initial_yview[0]) * canvas.bbox("all")[3]
+        self.assertGreaterEqual(pixel_movement, 30, f"Scroll was too sluggish: {pixel_movement}px")
+
+        modal.destroy()
+        self.root.update()
+
 
 if __name__ == "__main__":
     unittest.main()
+

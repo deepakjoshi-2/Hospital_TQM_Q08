@@ -279,13 +279,16 @@ class PatientFormModal(ctk.CTkToplevel):
             self._bind_mousewheel_recursive(child)
 
     def _on_mousewheel(self, event) -> None:
-        """Handle mouse wheel scrolling on the form."""
+        """Handle mouse wheel scrolling on the form with responsive desktop increments."""
         try:
             if hasattr(self, "form_scroll") and self.form_scroll._parent_canvas:
-                if event.num == 5 or event.delta < 0:
-                    self.form_scroll._parent_canvas.yview_scroll(1, "units")
-                elif event.num == 4 or event.delta > 0:
-                    self.form_scroll._parent_canvas.yview_scroll(-1, "units")
+                delta = getattr(event, "delta", 0)
+                num = getattr(event, "num", 0)
+                step = int(abs(delta) / 120.0 * 40) if delta else 40
+                if num == 5 or delta < 0:
+                    self.form_scroll._parent_canvas.yview("scroll", max(1, step), "units")
+                elif num == 4 or delta > 0:
+                    self.form_scroll._parent_canvas.yview("scroll", -max(1, step), "units")
         except Exception:
             pass
 
