@@ -292,11 +292,11 @@ class TQMView(ctk.CTkFrame):
         is_dark = ctk.get_appearance_mode().lower() == "dark"
         return {
             "is_dark": is_dark,
-            "bg": "#1E202E" if is_dark else "#FFFFFF",
-            "text": "#F8FAFC" if is_dark else "#0F172A",
-            "muted": "#94A3B8" if is_dark else "#64748B",
-            "grid": "#334155" if is_dark else "#E2E8F0",
-            "spine": "#334155" if is_dark else "#CBD5E1",
+            "bg": "#131E36" if is_dark else "#FFFFFF",
+            "text": "#F8FAFC" if is_dark else "#0A192F",
+            "muted": "#94A3B8" if is_dark else "#627D98",
+            "grid": "#1E2D4A" if is_dark else "#E2E8F0",
+            "spine": "#223456" if is_dark else "#CBD5E1",
         }
 
     def _close_active_figures(self) -> None:
@@ -371,13 +371,13 @@ class TQMView(ctk.CTkFrame):
         col_frame.pack(fill="x", padx=12, pady=(6, 4))
 
         headers = [
-            ("Process Step", 120),
-            ("Failure Mode & Effect", 220),
-            ("S × O × D", 80),
-            ("Initial RPN", 75),
-            ("Q08 Mitigation Implemented", 220),
-            ("Target RPN", 75),
-            ("Risk Reduction", 85),
+            ("Process Step", 110),
+            ("Failure Mode & Effect", 200),
+            ("S × O × D", 75),
+            ("Initial RPN", 70),
+            ("Q08 Mitigation Implemented", 200),
+            ("Target RPN", 70),
+            ("Risk Reduction", 75),
         ]
         for h, w in headers:
             ctk.CTkLabel(
@@ -414,19 +414,19 @@ class TQMView(ctk.CTkFrame):
                 text=r["process_step"],
                 font=ctk.CTkFont(size=11, weight="bold"),
                 text_color=("#0284C7", "#38BDF8"),
-                width=120,
+                width=110,
                 anchor="w",
             ).pack(side="left", padx=4)
 
             # Failure Mode & Effect
             mode_text = f"{r['failure_mode']} ({r.get('failure_effect', '')})"
-            display_mode = mode_text[:38] + ".." if len(mode_text) > 38 else mode_text
+            display_mode = mode_text[:34] + ".." if len(mode_text) > 34 else mode_text
             ctk.CTkLabel(
                 row,
                 text=display_mode,
                 font=ctk.CTkFont(size=11),
                 text_color=("#0F172A", "#F8FAFC"),
-                width=220,
+                width=200,
                 anchor="w",
             ).pack(side="left", padx=4)
 
@@ -437,7 +437,7 @@ class TQMView(ctk.CTkFrame):
                 text=sod_str,
                 font=ctk.CTkFont(size=11),
                 text_color=("#64748B", "#94A3B8"),
-                width=80,
+                width=75,
                 anchor="w",
             ).pack(side="left", padx=4)
 
@@ -449,20 +449,20 @@ class TQMView(ctk.CTkFrame):
                 text=str(rpn_val),
                 font=ctk.CTkFont(size=11, weight="bold"),
                 text_color=rpn_color,
-                width=75,
+                width=70,
                 anchor="w",
             )
             rpn_badge.pack(side="left", padx=4)
 
             # Mitigation Action
             act_text = r["mitigation_action"]
-            display_act = act_text[:38] + ".." if len(act_text) > 38 else act_text
+            display_act = act_text[:34] + ".." if len(act_text) > 34 else act_text
             ctk.CTkLabel(
                 row,
                 text=display_act,
                 font=ctk.CTkFont(size=11),
                 text_color=("#0F172A", "#F8FAFC"),
-                width=220,
+                width=200,
                 anchor="w",
             ).pack(side="left", padx=4)
 
@@ -473,7 +473,7 @@ class TQMView(ctk.CTkFrame):
                 text=str(tr_val),
                 font=ctk.CTkFont(size=11, weight="bold"),
                 text_color="#15803D",
-                width=75,
+                width=70,
                 anchor="w",
             ).pack(side="left", padx=4)
 
@@ -486,7 +486,7 @@ class TQMView(ctk.CTkFrame):
                 fg_color=("#DCFCE7", "#14532D"),
                 text_color=("#15803D", "#4ADE80"),
                 corner_radius=4,
-                width=65,
+                width=75,
                 height=22,
             )
             red_chip.pack(side="left", padx=4)
@@ -730,13 +730,13 @@ class TQMView(ctk.CTkFrame):
         col_frame.pack(fill="x", padx=12, pady=(6, 4))
 
         headers = [
-            ("Code", 85),
-            ("Category", 180),
-            ("Severity", 80),
-            ("Description", 260),
-            ("Reported By", 130),
-            ("Status", 95),
-            ("Action", 80),
+            ("Code", 75),
+            ("Category", 160),
+            ("Severity", 75),
+            ("Description", 220),
+            ("Reported By", 115),
+            ("Status", 85),
+            ("Action", 75),
         ]
         for h, w in headers:
             ctk.CTkLabel(
@@ -783,19 +783,19 @@ class TQMView(ctk.CTkFrame):
                 text=d["defect_code"],
                 font=ctk.CTkFont(size=11, weight="bold"),
                 text_color=("#0284C7", "#38BDF8"),
-                width=85,
+                width=75,
                 anchor="w",
             ).pack(side="left", padx=4)
 
             # Category
             c_text = d["category"]
-            disp_cat = c_text[:24] + ".." if len(c_text) > 24 else c_text
+            disp_cat = c_text[:22] + ".." if len(c_text) > 22 else c_text
             ctk.CTkLabel(
                 row,
                 text=disp_cat,
                 font=ctk.CTkFont(size=11, weight="bold"),
                 text_color=("#0F172A", "#F8FAFC"),
-                width=180,
+                width=160,
                 anchor="w",
             ).pack(side="left", padx=4)
 
@@ -816,13 +816,13 @@ class TQMView(ctk.CTkFrame):
 
             # Description
             desc = d["description"]
-            disp_desc = desc[:40] + ".." if len(desc) > 40 else desc
+            disp_desc = desc[:34] + ".." if len(desc) > 34 else desc
             ctk.CTkLabel(
                 row,
                 text=disp_desc,
                 font=ctk.CTkFont(size=11),
                 text_color=("#0F172A", "#F8FAFC"),
-                width=260,
+                width=220,
                 anchor="w",
             ).pack(side="left", padx=4)
 
@@ -832,7 +832,7 @@ class TQMView(ctk.CTkFrame):
                 text=d.get("reported_by", "Staff"),
                 font=ctk.CTkFont(size=11),
                 text_color=("#64748B", "#94A3B8"),
-                width=130,
+                width=115,
                 anchor="w",
             ).pack(side="left", padx=4)
 
@@ -1380,6 +1380,7 @@ class TQMView(ctk.CTkFrame):
         trace_data = get_quality_improvement_trace()
         kpis = trace_data["kpi_summary"]
         matrix = trace_data["trace_matrix"]
+        fmea_stats = get_fmea_summary_stats()
 
         # -------------------------------------------------------------
         # 1. Closed-Loop Methodology Workflow Ribbon
@@ -1415,7 +1416,7 @@ class TQMView(ctk.CTkFrame):
             ("1. Defect Checksheet", f"{kpis['total_defects_logged']} Logged Incidents", "#0284C7"),
             ("2. Pareto Analysis", "4 Vital Few (71.4% Cum)", "#0D9488"),
             ("3. Ishikawa Fishbone", "12 Causes Across 4 Ribs", "#7C3AED"),
-            ("4. FMEA Mitigation", "Avg RPN: 224.2 ➔ 17.4 (-92.2%)", "#D97706"),
+            ("4. FMEA Mitigation", f"Avg RPN: {fmea_stats['avg_initial_rpn']} ➔ {fmea_stats['avg_target_rpn']} (-{fmea_stats['overall_reduction_pct']}%)", "#D97706"),
             ("5. Standardized Controls", "0.0% Collisions / DB Index", "#10B981"),
             ("6. CSAT Target Met", f"{kpis['measured_csat']} ★ ({kpis['csat_positive_pct']}% Positive)", "#2563EB"),
         ]
@@ -1523,7 +1524,7 @@ class TQMView(ctk.CTkFrame):
         kpi_cards = [
             ("Traceability Integrity", "7 Categories", "6 Verified • 1 Unverified Link", "#0284C7"),
             ("Vital Few Focus", "71.4% Pareto Share", "4 Vital Few categories resolved", "#0D9488"),
-            ("FMEA Risk Reduction", "-92.2% Overall", "Avg RPN: 224.2 ➔ 17.4 (8 modes)", "#10B981"),
+            ("FMEA Risk Reduction", f"-{fmea_stats['overall_reduction_pct']}% Overall", f"Avg RPN: {fmea_stats['avg_initial_rpn']} ➔ {fmea_stats['avg_target_rpn']} ({fmea_stats['total_failure_modes']} modes)", "#10B981"),
             ("User Satisfaction (CSAT)", f"{kpis['measured_csat']} / 5.00 Stars", f"{kpis['csat_positive_pct']}% Positive ({kpis['csat_rated_count']} rated visits)", "#7C3AED"),
         ]
 
@@ -1580,14 +1581,14 @@ class TQMView(ctk.CTkFrame):
 
         # Table Header
         headers = [
-            ("Defect Category & Vital Few", 170),
-            ("Ishikawa Root Cause", 180),
-            ("FMEA Mitigation & Step", 180),
-            ("RPN Impact", 110),
-            ("Corrective Action & CTQ Spec", 200),
-            ("Measured Outcome & Provenance", 190),
-            ("PDCA Phase", 120),
-            ("Status", 95),
+            ("Defect & Vital Few", 115),
+            ("Root Cause", 110),
+            ("FMEA Mitigation", 110),
+            ("RPN Impact", 75),
+            ("Action & CTQ", 120),
+            ("Outcome & Metric", 110),
+            ("PDCA Phase", 70),
+            ("Status", 60),
         ]
 
         th = ctk.CTkFrame(matrix_frame, fg_color=("#F1F5F9", "#151824"), corner_radius=6, height=34)
@@ -1608,46 +1609,48 @@ class TQMView(ctk.CTkFrame):
             row_f.pack(fill="x", padx=12, pady=3)
 
             # Col 1: Defect Category & Vital Few
-            c1 = ctk.CTkFrame(row_f, fg_color="transparent", width=170)
+            c1 = ctk.CTkFrame(row_f, fg_color="transparent", width=115)
             c1.pack(side="left", padx=4, pady=6)
             c1.pack_propagate(False)
             ctk.CTkLabel(
                 c1,
                 text=r["defect_category"],
-                font=ctk.CTkFont(size=11, weight="bold"),
+                font=ctk.CTkFont(size=10, weight="bold"),
                 text_color=("#0F172A", "#F8FAFC"),
+                wraplength=110,
+                justify="left",
                 anchor="w",
             ).pack(anchor="w")
             ctk.CTkLabel(
                 c1,
                 text=r["pareto_share"],
-                font=ctk.CTkFont(size=10),
+                font=ctk.CTkFont(size=9),
                 text_color="#0284C7",
                 anchor="w",
             ).pack(anchor="w")
 
             # Col 2: Root Cause
-            c2 = ctk.CTkFrame(row_f, fg_color="transparent", width=180)
+            c2 = ctk.CTkFrame(row_f, fg_color="transparent", width=110)
             c2.pack(side="left", padx=4, pady=6)
             c2.pack_propagate(False)
             ctk.CTkLabel(
                 c2,
                 text=r["root_cause"],
-                font=ctk.CTkFont(size=10),
+                font=ctk.CTkFont(size=9),
                 text_color=("#0F172A", "#F8FAFC"),
-                wraplength=175,
+                wraplength=105,
                 justify="left",
                 anchor="w",
             ).pack(anchor="w")
 
             # Col 3: FMEA Step & Mode
-            c3 = ctk.CTkFrame(row_f, fg_color="transparent", width=180)
+            c3 = ctk.CTkFrame(row_f, fg_color="transparent", width=110)
             c3.pack(side="left", padx=4, pady=6)
             c3.pack_propagate(False)
             ctk.CTkLabel(
                 c3,
                 text=f"[{r['fmea_step']}]",
-                font=ctk.CTkFont(size=10, weight="bold"),
+                font=ctk.CTkFont(size=9, weight="bold"),
                 text_color="#0D9488",
                 anchor="w",
             ).pack(anchor="w")
@@ -1656,27 +1659,27 @@ class TQMView(ctk.CTkFrame):
                 text=r["fmea_mode"],
                 font=ctk.CTkFont(size=9),
                 text_color=("#64748B", "#94A3B8"),
-                wraplength=175,
+                wraplength=105,
                 justify="left",
                 anchor="w",
             ).pack(anchor="w")
 
             # Col 4: RPN Transition
-            c4 = ctk.CTkFrame(row_f, fg_color="transparent", width=110)
+            c4 = ctk.CTkFrame(row_f, fg_color="transparent", width=75)
             c4.pack(side="left", padx=4, pady=6)
             c4.pack_propagate(False)
             if r["initial_rpn"] is not None:
                 ctk.CTkLabel(
                     c4,
                     text=f"{r['initial_rpn']} ➔ {r['target_rpn']}",
-                    font=ctk.CTkFont(size=11, weight="bold"),
+                    font=ctk.CTkFont(size=10, weight="bold"),
                     text_color=("#EF4444" if r["initial_rpn"] >= 200 else "#D97706", "#F87171" if r["initial_rpn"] >= 200 else "#FBBF24"),
                     anchor="w",
                 ).pack(anchor="w")
                 ctk.CTkLabel(
                     c4,
                     text=f"Risk: {r['risk_reduction']}",
-                    font=ctk.CTkFont(size=10),
+                    font=ctk.CTkFont(size=9),
                     text_color="#10B981",
                     anchor="w",
                 ).pack(anchor="w")
@@ -1684,73 +1687,73 @@ class TQMView(ctk.CTkFrame):
                 ctk.CTkLabel(
                     c4,
                     text="N/A (Unmodeled)",
-                    font=ctk.CTkFont(size=10),
+                    font=ctk.CTkFont(size=9),
                     text_color=("#64748B", "#94A3B8"),
                     anchor="w",
                 ).pack(anchor="w")
 
             # Col 5: Corrective Action & CTQ Spec
-            c5 = ctk.CTkFrame(row_f, fg_color="transparent", width=200)
+            c5 = ctk.CTkFrame(row_f, fg_color="transparent", width=120)
             c5.pack(side="left", padx=4, pady=6)
             c5.pack_propagate(False)
             ctk.CTkLabel(
                 c5,
                 text=r["corrective_action"],
-                font=ctk.CTkFont(size=10),
+                font=ctk.CTkFont(size=9),
                 text_color=("#0F172A", "#F8FAFC"),
-                wraplength=195,
+                wraplength=115,
                 justify="left",
                 anchor="w",
             ).pack(anchor="w")
             ctk.CTkLabel(
                 c5,
                 text=f"Target: {r['ctq_spec']}",
-                font=ctk.CTkFont(size=9, weight="bold"),
+                font=ctk.CTkFont(size=8, weight="bold"),
                 text_color=("#0284C7", "#38BDF8"),
-                wraplength=195,
+                wraplength=115,
                 justify="left",
                 anchor="w",
             ).pack(anchor="w")
 
             # Col 6: Measured Outcome & Provenance
-            c6 = ctk.CTkFrame(row_f, fg_color="transparent", width=190)
+            c6 = ctk.CTkFrame(row_f, fg_color="transparent", width=110)
             c6.pack(side="left", padx=4, pady=6)
             c6.pack_propagate(False)
             ctk.CTkLabel(
                 c6,
                 text=r["measured_outcome"],
-                font=ctk.CTkFont(size=10, weight="bold"),
+                font=ctk.CTkFont(size=9, weight="bold"),
                 text_color=("#10B981", "#34D399") if r["is_verified_link"] else ("#D97706", "#FBBF24"),
-                wraplength=185,
+                wraplength=105,
                 justify="left",
                 anchor="w",
             ).pack(anchor="w")
             ctk.CTkLabel(
                 c6,
                 text=f"[{r['outcome_provenance']}]",
-                font=ctk.CTkFont(size=9),
+                font=ctk.CTkFont(size=8),
                 text_color=("#64748B", "#94A3B8"),
-                wraplength=185,
+                wraplength=105,
                 justify="left",
                 anchor="w",
             ).pack(anchor="w")
 
             # Col 7: PDCA Phase
-            c7 = ctk.CTkFrame(row_f, fg_color="transparent", width=120)
+            c7 = ctk.CTkFrame(row_f, fg_color="transparent", width=70)
             c7.pack(side="left", padx=4, pady=6)
             c7.pack_propagate(False)
             ctk.CTkLabel(
                 c7,
                 text=r["pdca_phase"],
-                font=ctk.CTkFont(size=10, weight="bold"),
+                font=ctk.CTkFont(size=9, weight="bold"),
                 text_color=("#7C3AED", "#A78BFA"),
-                wraplength=115,
+                wraplength=66,
                 justify="left",
                 anchor="w",
             ).pack(anchor="w")
 
             # Col 8: Verification Status Chip
-            c8 = ctk.CTkFrame(row_f, fg_color="transparent", width=95)
+            c8 = ctk.CTkFrame(row_f, fg_color="transparent", width=60)
             c8.pack(side="left", padx=4, pady=6)
             c8.pack_propagate(False)
             if r["is_verified_link"]:
@@ -1764,12 +1767,12 @@ class TQMView(ctk.CTkFrame):
             ctk.CTkLabel(
                 c8,
                 text=st_text,
-                font=ctk.CTkFont(size=10, weight="bold"),
+                font=ctk.CTkFont(size=8, weight="bold"),
                 fg_color=st_bg,
                 text_color=st_fg,
                 corner_radius=4,
-                width=85,
-                height=22,
+                width=56,
+                height=20,
             ).pack(anchor="center")
 
     def refresh_all(self) -> None:

@@ -97,21 +97,37 @@ class DashboardView(ctk.CTkFrame):
         left_info = ctk.CTkFrame(header_frame, fg_color="transparent")
         left_info.pack(side="left")
 
+        # Top line: Title + Status Pill
+        title_row = ctk.CTkFrame(left_info, fg_color="transparent")
+        title_row.pack(anchor="w")
+
         title = ctk.CTkLabel(
-            left_info,
+            title_row,
             text="Executive Clinical Dashboard",
-            font=ctk.CTkFont(size=24, weight="bold"),
-            text_color=("#0F172A", "#F8FAFC"),
+            font=ctk.CTkFont(size=23, weight="bold"),
+            text_color=("#0A192F", "#F8FAFC"),
         )
-        title.pack(anchor="w")
+        title.pack(side="left")
+
+        live_pill = ctk.CTkLabel(
+            title_row,
+            text="● Live System",
+            font=ctk.CTkFont(size=10, weight="bold"),
+            fg_color=("#DCFCE7", "#064E3B"),
+            text_color=("#15803D", "#34D399"),
+            corner_radius=10,
+            padx=8,
+            height=20,
+        )
+        live_pill.pack(side="left", padx=(10, 0))
 
         subtitle = ctk.CTkLabel(
             left_info,
-            text="Real-time patient throughput, medical roster, and TQM satisfaction indicators.",
+            text="Real-time patient throughput, physician roster, and TQM satisfaction indicators.",
             font=ctk.CTkFont(size=12),
             text_color=("#64748B", "#94A3B8"),
         )
-        subtitle.pack(anchor="w", pady=(2, 0))
+        subtitle.pack(anchor="w", pady=(3, 0))
 
         # Quick Action buttons on right
         btn_box = ctk.CTkFrame(header_frame, fg_color="transparent")
@@ -133,9 +149,9 @@ class DashboardView(ctk.CTkFrame):
             btn_box,
             text="+ Register Patient",
             font=ctk.CTkFont(size=13, weight="bold"),
-            fg_color=("#E2E8F0", "#334155"),
-            text_color=("#0F172A", "#F8FAFC"),
-            hover_color=("#CBD5E1", "#475569"),
+            fg_color=("#E2E8F0", "#1E2D4A"),
+            text_color=("#0A192F", "#F8FAFC"),
+            hover_color=("#CBD5E1", "#2B3D66"),
             height=36,
             corner_radius=8,
             command=lambda: self._trigger_nav("Patients"),
@@ -143,34 +159,41 @@ class DashboardView(ctk.CTkFrame):
         new_pat_btn.pack(side="right")
 
     def _build_kpi_row(self) -> None:
-        """Grid of 4 interactive KPI metric cards."""
+        """Grid of 4 interactive, clickable KPI metric cards with hover feedback."""
         kpi_frame = ctk.CTkFrame(self, fg_color="transparent")
         kpi_frame.pack(fill="x", padx=24, pady=(0, 16))
         kpi_frame.grid_columnconfigure((0, 1, 2, 3), weight=1, uniform="kpi")
+        kpi_frame.grid_rowconfigure(0, weight=1)
 
-        # 1. Total Patients
+        # 1. Total Patients -> Opens Patients Section
         c1 = KPICard(
             kpi_frame,
             title="Total Registered Patients",
             value=self.metrics["total_patients"],
             subtitle="Active clinical records in database",
             icon="👥",
-            accent_color="#38BDF8",
+            accent_color="#06B6D4",
+            command=lambda: self._trigger_nav("Patients"),
+            action_hint="View Patients →",
+            badge_tint=("#E0F2FE", "#082F49"),
         )
-        c1.grid(row=0, column=0, padx=(0, 8), sticky="ew")
+        c1.grid(row=0, column=0, padx=(0, 8), sticky="nsew")
 
-        # 2. Available Doctors
+        # 2. Available Doctors -> Opens Doctors Section
         c2 = KPICard(
             kpi_frame,
             title="Available Medical Staff",
             value=self.metrics["active_doctors"],
             subtitle="Specialists ready for consultation",
             icon="👨‍⚕️",
-            accent_color="#22C55E",
+            accent_color="#10B981",
+            command=lambda: self._trigger_nav("Doctors"),
+            action_hint="View Doctors →",
+            badge_tint=("#DCFCE7", "#064E3B"),
         )
-        c2.grid(row=0, column=1, padx=8, sticky="ew")
+        c2.grid(row=0, column=1, padx=8, sticky="nsew")
 
-        # 3. Today's Appointments
+        # 3. Today's Appointments -> Opens Appointments Section (Full Roster)
         c3 = KPICard(
             kpi_frame,
             title="Today's Appointments",
@@ -178,19 +201,25 @@ class DashboardView(ctk.CTkFrame):
             subtitle=f"Date: {self.metrics.get('today_date', '')}",
             icon="📅",
             accent_color="#F59E0B",
+            command=lambda: self._trigger_nav("Appointments"),
+            action_hint="Manage Schedule →",
+            badge_tint=("#FEF3C7", "#451A03"),
         )
-        c3.grid(row=0, column=2, padx=8, sticky="ew")
+        c3.grid(row=0, column=2, padx=8, sticky="nsew")
 
-        # 4. CSAT Satisfaction
+        # 4. CSAT Satisfaction -> Opens Visual Reports (CSAT Focused)
         c4 = KPICard(
             kpi_frame,
             title="User Satisfaction (CSAT)",
             value=self.metrics["csat_score"],
             subtitle=self.metrics["csat_percentage"],
             icon="⭐",
-            accent_color="#A855F7",
+            accent_color="#8B5CF6",
+            command=lambda: self._trigger_nav("Reports", target_report="csat"),
+            action_hint="View CSAT Report →",
+            badge_tint=("#F3E8FF", "#2E1065"),
         )
-        c4.grid(row=0, column=3, padx=(8, 0), sticky="ew")
+        c4.grid(row=0, column=3, padx=(8, 0), sticky="nsew")
 
     def _build_main_sections(self) -> None:
         """Bottom split section: Today's schedule table on left, TQM highlights on right."""
@@ -204,9 +233,9 @@ class DashboardView(ctk.CTkFrame):
         table_card = ctk.CTkFrame(
             split_frame,
             corner_radius=12,
-            fg_color=("white", "#1E202E"),
+            fg_color=("#FFFFFF", "#131E36"),
             border_width=1,
-            border_color=("#E2E8F0", "#334155"),
+            border_color=("#CBD5E1", "#223456"),
         )
         table_card.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
 
@@ -218,25 +247,25 @@ class DashboardView(ctk.CTkFrame):
             tbl_header,
             text=f"Today's Outpatient Schedule ({today_label_date})",
             font=ctk.CTkFont(size=16, weight="bold"),
-            text_color=("#0F172A", "#F8FAFC"),
+            text_color=("#0A192F", "#F8FAFC"),
         )
         tbl_title.pack(side="left")
 
         view_all_btn = ctk.CTkButton(
             tbl_header,
             text="View Full Roster →",
-            font=ctk.CTkFont(size=12),
+            font=ctk.CTkFont(size=12, weight="bold"),
             fg_color="transparent",
-            text_color="#38BDF8",
-            hover_color=("#F1F5F9", "#26293B"),
-            width=120,
+            text_color=("#0284C7", "#06B6D4"),
+            hover_color=("#F1F5F9", "#1A2847"),
+            width=130,
             height=28,
             command=lambda: self._trigger_nav("Appointments"),
         )
         view_all_btn.pack(side="right")
 
         # Table Column Headers
-        col_frame = ctk.CTkFrame(table_card, fg_color=("#F8FAFC", "#26293B"), height=34, corner_radius=6)
+        col_frame = ctk.CTkFrame(table_card, fg_color=("#F1F5F9", "#0E172B"), height=34, corner_radius=6)
         col_frame.pack(fill="x", padx=16, pady=(0, 6))
 
         headers = [("Code", 80), ("Patient", 140), ("Doctor & Speciality", 180), ("Slot", 90), ("Status", 90)]
@@ -244,8 +273,8 @@ class DashboardView(ctk.CTkFrame):
             lbl = ctk.CTkLabel(
                 col_frame,
                 text=h_text,
-                font=ctk.CTkFont(size=12, weight="bold"),
-                text_color=("#64748B", "#94A3B8"),
+                font=ctk.CTkFont(size=11, weight="bold"),
+                text_color=("#475569", "#94A3B8"),
                 width=width,
                 anchor="w",
             )
@@ -260,9 +289,9 @@ class DashboardView(ctk.CTkFrame):
             empty_card = ctk.CTkFrame(
                 rows_container,
                 corner_radius=10,
-                fg_color=("#F8FAFC", "#181A26"),
+                fg_color=("#F8FAFC", "#0E172B"),
                 border_width=1,
-                border_color=("#E2E8F0", "#26293B"),
+                border_color=("#E2E8F0", "#1E2D4A"),
             )
             empty_card.pack(fill="both", expand=True, padx=12, pady=20)
 
@@ -271,7 +300,7 @@ class DashboardView(ctk.CTkFrame):
                 empty_card,
                 text="📅",
                 font=ctk.CTkFont(size=36),
-                text_color=("#0284C7", "#38BDF8"),
+                text_color=("#0284C7", "#06B6D4"),
             )
             cal_icon.pack(pady=(22, 6))
 
@@ -280,7 +309,7 @@ class DashboardView(ctk.CTkFrame):
                 empty_card,
                 text="No appointments scheduled for today",
                 font=ctk.CTkFont(size=15, weight="bold"),
-                text_color=("#0F172A", "#F8FAFC"),
+                text_color=("#0A192F", "#F8FAFC"),
             )
             heading.pack(pady=(0, 4))
 
@@ -317,9 +346,9 @@ class DashboardView(ctk.CTkFrame):
                 act_box,
                 text="View Full Roster →",
                 font=ctk.CTkFont(size=12, weight="bold"),
-                fg_color=("#E2E8F0", "#334155"),
-                text_color=("#0F172A", "#F8FAFC"),
-                hover_color=("#CBD5E1", "#475569"),
+                fg_color=("#E2E8F0", "#1E2D4A"),
+                text_color=("#0A192F", "#F8FAFC"),
+                hover_color=("#CBD5E1", "#2B3D66"),
                 height=34,
                 corner_radius=8,
                 command=lambda: self._trigger_nav("Appointments"),
@@ -330,23 +359,23 @@ class DashboardView(ctk.CTkFrame):
                 self._render_table_row(rows_container, item)
 
         # Right Card: TQM Methodology & Coursework Highlights
-        tqm_card = ctk.CTkFrame(
+        self.tqm_card = ctk.CTkFrame(
             split_frame,
             corner_radius=12,
-            fg_color=("white", "#1E202E"),
+            fg_color=("#FFFFFF", "#131E36"),
             border_width=1,
-            border_color=("#E2E8F0", "#334155"),
+            border_color=("#CBD5E1", "#223456"),
         )
-        tqm_card.grid(row=0, column=1, sticky="nsew", padx=(10, 0))
+        self.tqm_card.grid(row=0, column=1, sticky="nsew", padx=(10, 0))
 
-        tqm_header = ctk.CTkFrame(tqm_card, fg_color="transparent")
-        tqm_header.pack(fill="x", padx=18, pady=(16, 12))
+        tqm_header = ctk.CTkFrame(self.tqm_card, fg_color="transparent")
+        tqm_header.pack(fill="x", padx=16, pady=(14, 10))
 
         tqm_title = ctk.CTkLabel(
             tqm_header,
-            text="TQM Quality Focus (Q08)",
-            font=ctk.CTkFont(size=16, weight="bold"),
-            text_color=("#0F172A", "#F8FAFC"),
+            text="🛡️ TQM Quality Focus (Q08)",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color=("#0A192F", "#F8FAFC"),
         )
         tqm_title.pack(side="left")
 
@@ -355,8 +384,8 @@ class DashboardView(ctk.CTkFrame):
             tqm_header,
             text="BBAT104",
             font=ctk.CTkFont(size=11, weight="bold"),
-            fg_color=("#E0F2FE", "#0C4A6E"),
-            text_color=("#0369A1", "#38BDF8"),
+            fg_color=("#E0F2FE", "#082F49"),
+            text_color=("#0284C7", "#38BDF8"),
             corner_radius=6,
             padx=8,
             pady=2,
@@ -364,41 +393,72 @@ class DashboardView(ctk.CTkFrame):
         badge.pack(side="right")
 
         # Scrollable container for TQM highlights and student metadata
-        self.tqm_scroll = ctk.CTkScrollableFrame(tqm_card, fg_color="transparent")
-        self.tqm_scroll.pack(fill="both", expand=True, padx=12, pady=(0, 12))
+        self.tqm_scroll = ctk.CTkScrollableFrame(self.tqm_card, fg_color="transparent")
+        self.tqm_scroll.pack(fill="both", expand=True, padx=8, pady=(0, 10))
 
-        # Highlights content
-        desc = ctk.CTkLabel(
+        # Highlights content with a stylized goal card
+        goal_box = ctk.CTkFrame(
             self.tqm_scroll,
-            text="Goal: Maximize User Satisfaction by eliminating registration bottlenecks, interface lag, and booking friction.",
-            font=ctk.CTkFont(size=12),
-            text_color=("#64748B", "#94A3B8"),
-            wraplength=320,
+            fg_color=("#F0F9FF", "#0A2540"),
+            border_width=1,
+            border_color=("#BAE6FD", "#075985"),
+            corner_radius=8,
+        )
+        goal_box.pack(fill="x", padx=4, pady=(0, 6))
+
+        self.goal_title = ctk.CTkLabel(
+            goal_box,
+            text="🎯 Q08 Continuous Improvement Goal",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color=("#0284C7", "#38BDF8"),
+            anchor="w",
+            wraplength=170,
             justify="left",
         )
-        desc.pack(fill="x", padx=6, pady=(0, 10))
+        self.goal_title.pack(fill="x", padx=10, pady=(6, 2))
+
+        self.goal_desc = ctk.CTkLabel(
+            goal_box,
+            text="Maximize User Satisfaction by eliminating registration bottlenecks, interface lag, and booking friction.",
+            font=ctk.CTkFont(size=11),
+            text_color=("#334E68", "#94A3B8"),
+            wraplength=170,
+            justify="left",
+        )
+        self.goal_desc.pack(fill="x", padx=10, pady=(0, 6))
 
         # TQM Checklist items
         highlights = [
-            ("🛡️ Double-Booking Shield", "Database partial index prevents slot collision"),
-            ("⚡ Fast Keyboard Shortcuts", "Instant access via Ctrl+1..6, Ctrl+N, F1"),
+            ("🛡️ Double-Booking Shield", "Database partial index prevents slot collision (0.0%)"),
+            ("⚡ Fast Keyboard Shortcuts", "Instant access via Ctrl+1..7, Ctrl+T, F1"),
             ("🌓 Theme Fatigue Reduction", "Instant Light / Dark high-contrast switcher"),
-            ("📊 Pareto 80/20 Defect Log", "Integrated Voice-of-Customer analysis"),
+            ("📊 Pareto 80/20 Defect Log", "Integrated Voice-of-Customer defect analysis"),
             ("⭐ CSAT Feedback Loop", "Ratings captured upon appointment completion"),
         ]
 
-        for title, detail in highlights:
-            item_box = ctk.CTkFrame(self.tqm_scroll, fg_color=("#F8FAFC", "#26293B"), corner_radius=8)
-            item_box.pack(fill="x", padx=6, pady=4)
+        self.tqm_title_labels = []
+        self.tqm_desc_labels = []
+        for title_text, detail in highlights:
+            item_box = ctk.CTkFrame(
+                self.tqm_scroll,
+                fg_color=("#F8FAFC", "#0E172B"),
+                border_width=1,
+                border_color=("#E2E8F0", "#1C2B48"),
+                corner_radius=8,
+            )
+            item_box.pack(fill="x", padx=4, pady=2)
 
             t_lbl = ctk.CTkLabel(
                 item_box,
-                text=title,
+                text=title_text,
                 font=ctk.CTkFont(size=12, weight="bold"),
-                text_color=("#0F172A", "#F8FAFC"),
+                text_color=("#0A192F", "#F8FAFC"),
                 anchor="w",
+                wraplength=170,
+                justify="left",
             )
-            t_lbl.pack(fill="x", padx=10, pady=(6, 1))
+            t_lbl.pack(fill="x", padx=10, pady=(5, 1))
+            self.tqm_title_labels.append(t_lbl)
 
             d_lbl = ctk.CTkLabel(
                 item_box,
@@ -406,21 +466,89 @@ class DashboardView(ctk.CTkFrame):
                 font=ctk.CTkFont(size=11),
                 text_color=("#64748B", "#94A3B8"),
                 anchor="w",
+                wraplength=170,
+                justify="left",
             )
-            d_lbl.pack(fill="x", padx=10, pady=(0, 6))
+            d_lbl.pack(fill="x", padx=10, pady=(0, 5))
+            self.tqm_desc_labels.append(d_lbl)
 
         # Bottom Student Info
         student_frame = ctk.CTkFrame(self.tqm_scroll, fg_color="transparent")
-        student_frame.pack(fill="x", padx=6, pady=(12, 4))
+        student_frame.pack(fill="x", padx=4, pady=(8, 4))
 
-        st_lbl = ctk.CTkLabel(
+        self.st_lbl = ctk.CTkLabel(
             student_frame,
-            text="Developer: Deepak Joshi | CSE Section B",
+            text="Developer: Deepak Joshi | Roll: 2410302011 | Section B",
             font=ctk.CTkFont(size=11, weight="bold"),
             text_color=("#0284C7", "#38BDF8"),
             anchor="center",
+            wraplength=170,
+            justify="center",
         )
-        st_lbl.pack(fill="x")
+        self.st_lbl.pack(fill="x")
+
+        # Responsive card and canvas resize listeners for dynamic text wrapping
+        self._tqm_after_ids = []
+        self.tqm_card.bind("<Configure>", self._recalculate_tqm_wrapping, add="+")
+        if hasattr(self.tqm_scroll, "_parent_canvas"):
+            self.tqm_scroll._parent_canvas.bind("<Configure>", self._recalculate_tqm_wrapping, add="+")
+        self._schedule_tqm_wrap(50)
+        self._schedule_tqm_wrap(200)
+
+    def _schedule_tqm_wrap(self, ms: int = 50) -> None:
+        """Safely schedule a wrap recalculation with cancellation tracking."""
+        try:
+            if not self.winfo_exists():
+                return
+            if not hasattr(self, "_tqm_after_ids"):
+                self._tqm_after_ids = []
+            aid = self.after(ms, self._recalculate_tqm_wrapping)
+            self._tqm_after_ids.append(aid)
+        except Exception:
+            pass
+
+    def _recalculate_tqm_wrapping(self, event=None) -> None:
+        """Dynamically compute exact text wraplength from the scrollable canvas width."""
+        try:
+            if not hasattr(self, "tqm_scroll") or not self.winfo_exists() or not self.tqm_scroll.winfo_exists():
+                return
+            canvas = self.tqm_scroll._parent_canvas
+            canvas_w = canvas.winfo_width()
+            scaling = self._get_widget_scaling() if hasattr(self, "_get_widget_scaling") else 1.0
+
+            # If canvas not mapped yet, derive from tqm_card width or schedule check
+            if canvas_w <= 10:
+                card_w = self.tqm_card.winfo_width()
+                if card_w > 50:
+                    canvas_w = max(100, card_w - 44)
+                else:
+                    self._schedule_tqm_wrap(50)
+                    return
+
+            # Canvas width minus item_box padding (8px) minus label padding (20px) minus safety clearance (6px) = 34px
+            usable_physical = max(120, canvas_w - 34)
+            usable_logical = max(80, int(usable_physical / scaling))
+
+            # Apply exact wraplength across all labels in the TQM panel
+            if hasattr(self, "goal_desc") and self.goal_desc.winfo_exists():
+                if abs(self.goal_desc.cget("wraplength") - usable_logical) > 3:
+                    self.goal_desc.configure(wraplength=usable_logical)
+            if hasattr(self, "goal_title") and self.goal_title.winfo_exists():
+                if abs(self.goal_title.cget("wraplength") - usable_logical) > 3:
+                    self.goal_title.configure(wraplength=usable_logical)
+            if hasattr(self, "tqm_title_labels"):
+                for lbl in self.tqm_title_labels:
+                    if lbl.winfo_exists() and abs(lbl.cget("wraplength") - usable_logical) > 3:
+                        lbl.configure(wraplength=usable_logical)
+            if hasattr(self, "tqm_desc_labels"):
+                for lbl in self.tqm_desc_labels:
+                    if lbl.winfo_exists() and abs(lbl.cget("wraplength") - usable_logical) > 3:
+                        lbl.configure(wraplength=usable_logical)
+            if hasattr(self, "st_lbl") and self.st_lbl.winfo_exists():
+                if abs(self.st_lbl.cget("wraplength") - usable_logical) > 3:
+                    self.st_lbl.configure(wraplength=usable_logical)
+        except Exception:
+            pass
 
     def _render_table_row(self, container, item) -> None:
         """Render individual appointment table row with styled chips."""
@@ -496,10 +624,13 @@ class DashboardView(ctk.CTkFrame):
         )
         chip.pack(side="left", padx=8)
 
-    def _trigger_nav(self, view_name: str) -> None:
-        """Call navigation handler if supplied."""
-        if self.on_navigate:
-            self.on_navigate(view_name)
+    def _trigger_nav(self, view_name: str, **kwargs) -> None:
+        """Call navigation handler if supplied with optional target arguments."""
+        if self.on_navigate and callable(self.on_navigate):
+            try:
+                self.on_navigate(view_name, **kwargs)
+            except TypeError:
+                self.on_navigate(view_name)
 
     def _open_book_appointment_modal(self) -> None:
         """Open the real appointment booking modal and refresh dashboard on success."""
@@ -523,3 +654,14 @@ class DashboardView(ctk.CTkFrame):
         self._build_header()
         self._build_kpi_row()
         self._build_main_sections()
+
+    def destroy(self) -> None:
+        """Cancel any pending scheduled callbacks and unbind listeners cleanly."""
+        if hasattr(self, "_tqm_after_ids"):
+            for aid in self._tqm_after_ids:
+                try:
+                    self.after_cancel(aid)
+                except Exception:
+                    pass
+            self._tqm_after_ids.clear()
+        super().destroy()
