@@ -25,8 +25,9 @@ from services.report_service import (
 class ReportsView(ctk.CTkFrame):
     """Visual Reports View featuring dynamic analytical charts and SQLite synchronization."""
 
-    def __init__(self, master, **kwargs):
+    def __init__(self, master, target_report: Optional[str] = None, **kwargs):
         super().__init__(master, fg_color="transparent", **kwargs)
+        self.target_report = target_report
         self.active_figures: List[Figure] = []
         self.active_canvases: List[FigureCanvasTkAgg] = []
         self._refresh_timer_id: Optional[str] = None
@@ -35,6 +36,10 @@ class ReportsView(ctk.CTkFrame):
         self._build_header()
         self._build_scrollable_container()
         self.render_all_charts()
+
+        # If CSAT report was targeted (e.g. from Dashboard KPI card), auto-scroll to it
+        if self.target_report in ("csat", "satisfaction"):
+            self.after(250, self._scroll_to_csat)
 
     def _build_header(self) -> None:
         """Header with report title, action buttons, and responsive summary KPI cards."""
@@ -159,13 +164,13 @@ class ReportsView(ctk.CTkFrame):
         is_dark = ctk.get_appearance_mode().lower() == "dark"
         return {
             "is_dark": is_dark,
-            "bg": "#1E202E" if is_dark else "#FFFFFF",
-            "text": "#F8FAFC" if is_dark else "#0F172A",
-            "muted": "#94A3B8" if is_dark else "#64748B",
-            "grid": "#334155" if is_dark else "#E2E8F0",
-            "spine": "#334155" if is_dark else "#CBD5E1",
-            "card_bg": ("white", "#1E202E"),
-            "border": ("#E2E8F0", "#334155"),
+            "bg": "#131E36" if is_dark else "#FFFFFF",
+            "text": "#F8FAFC" if is_dark else "#0A192F",
+            "muted": "#94A3B8" if is_dark else "#627D98",
+            "grid": "#1E2D4A" if is_dark else "#E2E8F0",
+            "spine": "#223456" if is_dark else "#CBD5E1",
+            "card_bg": ("white", "#131E36"),
+            "border": ("#CBD5E1", "#223456"),
         }
 
     def _close_active_figures(self) -> None:
@@ -222,17 +227,42 @@ class ReportsView(ctk.CTkFrame):
         # -------------------------------------------------------------
         # Card 4: Patient Satisfaction / CSAT Feedback
         # -------------------------------------------------------------
-        c4 = self._create_card_frame(self.scroll_frame, row=1, col=1, padx=(8, 0), pady=(0, 16))
-        self._build_satisfaction_chart(c4)
+        is_csat_target = self.target_report in ("csat", "satisfaction")
+        c4 = self._create_card_frame(
+            self.scroll_frame,
+            row=1,
+            col=1,
+            padx=(8, 0),
+            pady=(0, 16),
+            is_highlighted=is_csat_target,
+        )
+        self._build_satisfaction_chart(c4, is_focused=is_csat_target)
 
-    def _create_card_frame(self, parent, row: int, col: int, padx, pady) -> ctk.CTkFrame:
-        """Create styled container card for a report chart."""
+    def _scroll_to_csat(self) -> None:
+        """Scroll view container down so the CSAT report is prominently centered."""
+        try:
+            if hasattr(self, "scroll_frame") and hasattr(self.scroll_frame, "_parent_canvas") and self.winfo_exists():
+                self.scroll_frame._parent_canvas.yview_moveto(0.65)
+        except Exception:
+            pass
+
+    def _create_card_frame(self, parent, row: int, col: int, padx, pady, is_highlighted: bool = False) -> ctk.CTkFrame:
+        """Create styled container card for a report chart with optional focus highlight."""
+        if is_highlighted:
+            border_col = ("#0284C7", "#06B6D4")
+            border_w = 2
+            card_fg = ("#F0F9FF", "#112240")
+        else:
+            border_col = ("#CBD5E1", "#223456")
+            border_w = 1
+            card_fg = ("white", "#131E36")
+
         card = ctk.CTkFrame(
             parent,
             corner_radius=12,
-            fg_color=("white", "#1E202E"),
-            border_width=1,
-            border_color=("#E2E8F0", "#334155"),
+            fg_color=card_fg,
+            border_width=border_w,
+            border_color=border_col,
         )
         card.grid(row=row, column=col, padx=padx, pady=pady, sticky="nsew")
         return card
@@ -549,14 +579,29 @@ class ReportsView(ctk.CTkFrame):
     # =========================================================================
     # CHART 4: PATIENT SATISFACTION / CSAT FEEDBACK
     # =========================================================================
-    def _build_satisfaction_chart(self, parent: ctk.CTkFrame) -> None:
+    def _build_satisfaction_chart(self, parent: ctk.CTkFrame, is_focused: bool = False) -> None:
         """Render Patient Satisfaction / CSAT ratings ONLY if actual feedback exists."""
+        title_row = ctk.CTkFrame(parent, fg_color="transparent")
+        title_row.pack(fill="x", padx=16, pady=(14, 2))
+
         ctk.CTkLabel(
-            parent,
+            title_row,
             text="Patient Satisfaction & CSAT Ratings",
             font=ctk.CTkFont(size=15, weight="bold"),
-            text_color=("#0F172A", "#F8FAFC"),
-        ).pack(anchor="w", padx=16, pady=(14, 2))
+            text_color=("#0A192F", "#F8FAFC"),
+        ).pack(side="left")
+
+        if is_focused:
+            ctk.CTkLabel(
+                title_row,
+                text="★ PRIMARY TQM METRIC",
+                font=ctk.CTkFont(size=10, weight="bold"),
+                fg_color=("#E0F2FE", "#082F49"),
+                text_color=("#0284C7", "#38BDF8"),
+                corner_radius=6,
+                padx=8,
+                height=22,
+            ).pack(side="right")
 
         sat_data = get_patient_satisfaction_data()
 

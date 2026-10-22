@@ -96,9 +96,9 @@ class HospitalApp(ctk.CTk):
             self,
             width=240,
             corner_radius=0,
-            fg_color=("#F1F5F9", "#181A26"),
+            fg_color=("#F8FAFC", "#0C152B"),
             border_width=1,
-            border_color=("#E2E8F0", "#26293B"),
+            border_color=("#CBD5E1", "#1E2D4A"),
         )
         self.sidebar.grid(row=0, column=0, sticky="nsew")
         self.sidebar.grid_propagate(False)
@@ -111,16 +111,16 @@ class HospitalApp(ctk.CTk):
             brand_frame,
             text="🏥 Hospital TQM",
             font=ctk.CTkFont(size=18, weight="bold"),
-            text_color=("#0284C7", "#38BDF8"),
+            text_color=("#0284C7", "#06B6D4"),
             anchor="w",
         )
         logo_lbl.pack(fill="x")
 
         sub_lbl = ctk.CTkLabel(
             brand_frame,
-            text="Q08 Satisfaction Engine",
+            text="Clinical Quality Analytics • Q08",
             font=ctk.CTkFont(size=11),
-            text_color=("#64748B", "#94A3B8"),
+            text_color=("#475569", "#94A3B8"),
             anchor="w",
         )
         sub_lbl.pack(fill="x")
@@ -130,22 +130,22 @@ class HospitalApp(ctk.CTk):
             brand_frame,
             text=f"{STUDENT_NAME} • {STUDENT_SECTION}",
             font=ctk.CTkFont(size=10, weight="bold"),
-            fg_color=("#E2E8F0", "#26293B"),
-            text_color=("#0F172A", "#F8FAFC"),
+            fg_color=("#F1F5F9", "#131E36"),
+            text_color=("#0A192F", "#F8FAFC"),
             corner_radius=6,
-            height=22,
+            height=24,
         )
         badge.pack(fill="x", pady=(8, 0))
 
         # Separator line
-        sep = ctk.CTkFrame(self.sidebar, height=1, fg_color=("#CBD5E1", "#334155"))
+        sep = ctk.CTkFrame(self.sidebar, height=1, fg_color=("#CBD5E1", "#1E2D4A"))
         sep.pack(fill="x", padx=16, pady=(12, 16))
 
         # 2. Navigation Menu Buttons
         menu_items = [
             ("Dashboard", "📊  Dashboard"),
-            ("Patients", "👥  Patients"),
-            ("Doctors", "👨‍⚕️  Doctors"),
+            ("Patients", "👥  Patients Directory"),
+            ("Doctors", "👨‍⚕️  Physicians Roster"),
             ("Appointments", "📅  Appointments"),
             ("Reports", "📈  Visual Reports"),
             ("TQM", "🛡️  TQM Quality Tools"),
@@ -162,7 +162,7 @@ class HospitalApp(ctk.CTk):
                 corner_radius=8,
                 fg_color="transparent",
                 text_color=("#475569", "#94A3B8"),
-                hover_color=("#E2E8F0", "#26293B"),
+                hover_color=("#E2E8F0", "#162544"),
                 command=lambda k=key: self.show_view(k),
             )
             btn.pack(fill="x", padx=12, pady=3)
@@ -175,17 +175,20 @@ class HospitalApp(ctk.CTk):
         # Database connection indicator
         db_pill = ctk.CTkLabel(
             bottom_box,
-            text="● SQLite Database Active",
+            text="● SQLite Active (WAL Mode)",
             font=ctk.CTkFont(size=10, weight="bold"),
-            text_color=("#16A34A", "#22C55E"),
-            anchor="w",
+            fg_color=("#DCFCE7", "#064E3B"),
+            text_color=("#15803D", "#34D399"),
+            corner_radius=8,
+            height=24,
+            anchor="center",
         )
         db_pill.pack(fill="x", pady=(0, 10))
 
         # Theme Switcher (Q08 Feature 3)
         theme_lbl = ctk.CTkLabel(
             bottom_box,
-            text="Appearance Mode:",
+            text="Appearance Theme:",
             font=ctk.CTkFont(size=11, weight="bold"),
             text_color=("#64748B", "#94A3B8"),
             anchor="w",
@@ -200,11 +203,21 @@ class HospitalApp(ctk.CTk):
             corner_radius=6,
         )
         self.theme_switch.set("Dark")
-        self.theme_switch.pack(fill="x", pady=(4, 8))
+        self.theme_switch.pack(fill="x", pady=(4, 6))
+
+        # Academic Version Tag
+        v_tag = ctk.CTkLabel(
+            bottom_box,
+            text="Academic Prototype — v1.0",
+            font=ctk.CTkFont(size=9),
+            text_color=("#64748B", "#64748B"),
+            anchor="center",
+        )
+        v_tag.pack(fill="x")
 
     def _build_content_area(self) -> None:
         """Create main dynamic content area and top header bar."""
-        self.content_container = ctk.CTkFrame(self, corner_radius=0, fg_color=("white", "#12131C"))
+        self.content_container = ctk.CTkFrame(self, corner_radius=0, fg_color=("#F1F5F9", "#0A0F1D"))
         self.content_container.grid(row=0, column=1, sticky="nsew")
         self.content_container.grid_rowconfigure(1, weight=1)
         self.content_container.grid_columnconfigure(0, weight=1)
@@ -214,9 +227,9 @@ class HospitalApp(ctk.CTk):
             self.content_container,
             height=60,
             corner_radius=0,
-            fg_color=("white", "#1E202E"),
+            fg_color=("#FFFFFF", "#0F172A"),
             border_width=1,
-            border_color=("#E2E8F0", "#26293B"),
+            border_color=("#CBD5E1", "#1E2D4A"),
         )
         self.top_bar.grid(row=0, column=0, sticky="ew")
         self.top_bar.grid_propagate(False)
@@ -226,7 +239,7 @@ class HospitalApp(ctk.CTk):
             self.top_bar,
             text="Interactive Dashboard",
             font=ctk.CTkFont(size=17, weight="bold"),
-            text_color=("#0F172A", "#F8FAFC"),
+            text_color=("#0A192F", "#F8FAFC"),
         )
         self.view_title_lbl.pack(side="left", padx=24)
 
@@ -239,9 +252,11 @@ class HospitalApp(ctk.CTk):
             right_actions,
             text="⌨ Shortcuts [F1]",
             font=ctk.CTkFont(size=11, weight="bold"),
-            fg_color=("#F1F5F9", "#26293B"),
-            text_color=("#0F172A", "#F8FAFC"),
-            hover_color=("#E2E8F0", "#334155"),
+            fg_color=("#F1F5F9", "#17254A"),
+            text_color=("#0A192F", "#F8FAFC"),
+            hover_color=("#E2E8F0", "#223862"),
+            border_width=1,
+            border_color=("#CBD5E1", "#243666"),
             width=120,
             height=32,
             corner_radius=6,
@@ -257,22 +272,31 @@ class HospitalApp(ctk.CTk):
             width=90,
             height=32,
             corner_radius=6,
-            fg_color=("#F1F5F9", "#26293B"),
-            text_color=("#0F172A", "#F8FAFC"),
-            hover_color=("#E2E8F0", "#334155"),
+            fg_color=("#F1F5F9", "#17254A"),
+            text_color=("#0A192F", "#F8FAFC"),
+            hover_color=("#E2E8F0", "#223862"),
+            border_width=1,
+            border_color=("#CBD5E1", "#243666"),
             command=self.toggle_theme,
         )
         self.theme_quick_btn.pack(side="left", padx=(0, 12))
 
         # User Profile Pill (Clickable -> Settings)
-        user_chip = ctk.CTkFrame(right_actions, fg_color=("#F1F5F9", "#26293B"), corner_radius=16, cursor="hand2")
+        user_chip = ctk.CTkFrame(
+            right_actions,
+            fg_color=("#F1F5F9", "#17254A"),
+            border_width=1,
+            border_color=("#CBD5E1", "#243666"),
+            corner_radius=16,
+            cursor="hand2",
+        )
         user_chip.pack(side="left")
 
         self.user_lbl = ctk.CTkLabel(
             user_chip,
             text=f"👤 {STUDENT_NAME} (Admin)",
             font=ctk.CTkFont(size=11, weight="bold"),
-            text_color=("#0F172A", "#F8FAFC"),
+            text_color=("#0A192F", "#F8FAFC"),
             padx=12,
             pady=4,
             cursor="hand2",
@@ -297,7 +321,7 @@ class HospitalApp(ctk.CTk):
             self.user_lbl.configure(text=f"👤 {name_text} ({role_text})")
 
 
-    def show_view(self, view_name: str) -> None:
+    def show_view(self, view_name: str, **kwargs) -> None:
         """Switch active view frame dynamically with highlight updating."""
         # Normalize common aliases
         if view_name in ("TQM Toolkit", "TQM Quality Tools"):
@@ -305,17 +329,20 @@ class HospitalApp(ctk.CTk):
 
         self.active_view_name = view_name
 
-        # Update Navigation Button Styles
+        # Update Navigation Button Styles with distinctive clinical accent indicator
         for name, btn in self.nav_buttons.items():
             if name == view_name:
                 btn.configure(
-                    fg_color=("#0284C7", "#0284C7"),
-                    text_color="white",
+                    fg_color=("#E0F2FE", "#0F2B48"),
+                    text_color=("#0284C7", "#38BDF8"),
+                    border_width=1,
+                    border_color=("#0284C7", "#06B6D4"),
                 )
             else:
                 btn.configure(
                     fg_color="transparent",
                     text_color=("#475569", "#94A3B8"),
+                    border_width=0,
                 )
 
         # Remove existing view frame
@@ -338,7 +365,8 @@ class HospitalApp(ctk.CTk):
             self.current_view_frame = AppointmentsView(self.content_container)
         elif view_name == "Reports":
             self.view_title_lbl.configure(text="Visual Reports & Quality Analytics")
-            self.current_view_frame = ReportsView(self.content_container)
+            target_rep = kwargs.get("target_report")
+            self.current_view_frame = ReportsView(self.content_container, target_report=target_rep)
         elif view_name == "TQM":
             self.view_title_lbl.configure(text="TQM Quality Toolkit (BBAT104)")
             self.current_view_frame = TQMView(self.content_container)
