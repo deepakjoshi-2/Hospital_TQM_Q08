@@ -218,6 +218,33 @@ def seed_database(db_path: Optional[str] = None) -> None:
                     item,
                 )
 
+        # 8. Seed RBAC Users (Feature 2)
+        import hashlib
+        import secrets
+
+        def _seed_hash(password: str, salt: str) -> str:
+            return hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 100_000).hex()
+
+        seed_users = [
+            ("admin", "deepak.admin@hospital.demo", "Admin@123", "Hospital Administrator", "Deepak Joshi (Administrator)", None, None),
+            ("staff_reception", "reception@hospital.demo", "Staff@123", "Staff", "Pooja Verma (Reception Desk)", None, None),
+            ("dr_arun", "rajesh.sharma@hospital.demo", "Doctor@123", "Doctor", "Dr. Rajesh Sharma", None, doc_map.get("DOC-2001", 1)),
+            ("patient_aarav", "aarav.verma@example.demo", "Patient@123", "Patient", "Aarav Verma", pat_map.get("PAT-1001", 1), None),
+        ]
+
+        for uname, email, raw_pwd, role, fname, pat_id, doc_id in seed_users:
+            cursor.execute("SELECT id FROM users WHERE username = ?;", (uname,))
+            if not cursor.fetchone():
+                salt = secrets.token_hex(16)
+                pwd_hash = _seed_hash(raw_pwd, salt)
+                cursor.execute(
+                    """
+                    INSERT INTO users (username, email, password_hash, salt, role, full_name, linked_patient_id, linked_doctor_id, is_active)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1);
+                    """,
+                    (uname, email, pwd_hash, salt, role, fname, pat_id, doc_id),
+                )
+
 
 if __name__ == "__main__":
     seed_database()

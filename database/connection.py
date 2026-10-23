@@ -74,6 +74,11 @@ def reset_db(db_path: Optional[str] = None) -> None:
     """Safely drop all existing tables and re-initialize with fresh schema."""
     drop_tables_script = """
     PRAGMA foreign_keys = OFF;
+    DROP TABLE IF EXISTS receipts;
+    DROP TABLE IF EXISTS payments;
+    DROP TABLE IF EXISTS bills;
+    DROP TABLE IF EXISTS notifications;
+    DROP TABLE IF EXISTS users;
     DROP TABLE IF EXISTS tqm_fmea_records;
     DROP TABLE IF EXISTS tqm_defect_logs;
     DROP TABLE IF EXISTS appointments;
