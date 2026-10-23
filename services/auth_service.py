@@ -143,6 +143,8 @@ ROLE_PERMISSIONS = {
         "manage_users": True,
         "view_settings": True,
         "all_appointments_access": True,
+        "pay_own_bills": True,
+        "audit_payments": True,
     },
     ROLE_STAFF: {
         "view_dashboard": True,
@@ -163,6 +165,8 @@ ROLE_PERMISSIONS = {
         "manage_users": False,
         "view_settings": True,
         "all_appointments_access": True,
+        "pay_own_bills": False,
+        "audit_payments": False,
     },
     ROLE_DOCTOR: {
         "view_dashboard": False,
@@ -183,6 +187,8 @@ ROLE_PERMISSIONS = {
         "manage_users": False,
         "view_settings": True,
         "all_appointments_access": False,  # Restricted to linked doctor ID
+        "pay_own_bills": False,
+        "audit_payments": False,
     },
     ROLE_PATIENT: {
         "view_dashboard": False,
@@ -203,6 +209,8 @@ ROLE_PERMISSIONS = {
         "manage_users": False,
         "view_settings": True,
         "all_appointments_access": False,  # Restricted to linked patient ID
+        "pay_own_bills": True,
+        "audit_payments": False,
     },
 }
 

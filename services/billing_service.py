@@ -307,12 +307,20 @@ def record_payment(
     reference_number: Optional[str] = None,
     recorded_by: str = "Front Desk Operator",
     notes: Optional[str] = None,
+    user: Optional[Dict] = None,
 ) -> Tuple[bool, str, Optional[Dict]]:
     """Process full or partial payment against a bill, generate payment record and receipt.
     
     Returns:
         (success, message, receipt_dict)
     """
+    from services.auth_service import get_current_user
+    cur_u = user or get_current_user()
+    if cur_u:
+        role = cur_u.get("role")
+        if role == "Doctor":
+            return False, "Unauthorized: Doctors cannot collect or record payments.", None
+
     try:
         amt = float(amount)
         if amt <= 0:
@@ -329,11 +337,28 @@ def record_payment(
             if not bill:
                 return False, f"Bill ID {bill_id} not found.", None
 
+            # Ownership check for patient role
+            if cur_u and cur_u.get("role") == "Patient":
+                linked_pid = cur_u.get("linked_patient_id")
+                if not linked_pid or int(bill["patient_id"]) != int(linked_pid):
+                    return False, "Security Violation: You can only pay your own invoices.", None
+
+            # Idempotency check if reference number provided
+            if reference_number:
+                existing_p = conn.execute(
+                    "SELECT id FROM payments WHERE bill_id = ? AND reference_number = ? AND status = 'Success';",
+                    (bill_id, reference_number),
+                ).fetchone()
+                if existing_p:
+                    rec_row = conn.execute("SELECT receipt_number FROM receipts WHERE payment_id = ?;", (existing_p["id"],)).fetchone()
+                    if rec_row:
+                        return True, "Payment already recorded (idempotent request).", get_receipt_by_number(rec_row["receipt_number"])
+
             outstanding = float(bill["outstanding_balance"])
             if outstanding <= 0:
                 return False, "This bill is already fully settled (No balance due).", None
 
-            if amt > outstanding:
+            if amt > (outstanding + 0.001):
                 return False, f"Payment amount (Rs. {amt:.2f}) cannot exceed outstanding balance (Rs. {outstanding:.2f}).", None
 
             # Calculate new balances

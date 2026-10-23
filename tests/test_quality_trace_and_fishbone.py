@@ -130,7 +130,7 @@ class TestQualityTraceAndFishbone(unittest.TestCase):
         # KPI Summary verified against database
         kpis = trace["kpi_summary"]
         self.assertEqual(kpis["total_defects_logged"], 21)
-        self.assertEqual(kpis["total_appointments"], 44)
+        self.assertEqual(kpis["total_appointments"], self.baseline_appointments)
         self.assertEqual(kpis["completed_appointments"], 20)
         self.assertEqual(kpis["csat_rated_count"], 20)
         self.assertAlmostEqual(kpis["measured_csat"], 4.45, places=2)
