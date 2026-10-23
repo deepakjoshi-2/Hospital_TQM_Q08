@@ -43,7 +43,7 @@ from ui.views import (
 class HospitalApp(ctk.CTk):
     """Main desktop application window with responsive sidebar and modular views."""
 
-    def __init__(self):
+    def __init__(self, start_login: bool = False):
         super().__init__()
 
         # Install centralized mouse-wheel scrolling across all views and modals
@@ -67,20 +67,28 @@ class HospitalApp(ctk.CTk):
         # Active view tracking
         self.active_view_name = "Dashboard"
         self.nav_buttons: Dict[str, ctk.CTkButton] = {}
+        self.current_view_frame: Optional[ctk.CTkFrame] = None
+        self.login_container: Optional[ctk.CTkFrame] = None
+        self.login_view_frame: Optional[ctk.CTkFrame] = None
 
-        # Default to Administrator session for instant access & backward compatibility
-        if get_current_user() is None:
-            login("admin", "Admin@123")
-
-        # Build Main UI Shell
+        # Build Main UI Shell frames
         self._build_sidebar()
         self._build_content_area()
 
         # Register Keyboard Shortcuts (Q08 Feature 4)
         self._register_shortcuts()
 
-        # Load initial view
-        self.show_view("Dashboard")
+        # Startup flow: Dedicated full login screen on fresh launch (start_login=True),
+        # or resume authenticated dashboard if user session is active / direct view mode.
+        current_u = get_current_user()
+        if start_login:
+            self.show_login_screen()
+        else:
+            if current_u is None:
+                login("admin", "Admin@123")
+            self._rebuild_sidebar_menu()
+            self.update_profile_display()
+            self.show_view("Dashboard")
 
         # Guarantee window is visible and elevated above background terminal
         self.after(100, self._ensure_visible_on_screen)
@@ -405,7 +413,7 @@ class HospitalApp(ctk.CTk):
             hover_color=("#FECACA", "#4C1D24"),
             border_width=1,
             border_color=("#FCA5A5", "#5C2029"),
-            command=self.show_login_screen,
+            command=self.logout_user,
         )
         self.signout_btn.pack(side="left", padx=(8, 0))
 
@@ -413,7 +421,7 @@ class HospitalApp(ctk.CTk):
         self.update_profile_display()
 
         # Dynamic View Frame holder
-        self.current_view_frame: ctk.CTkFrame = None
+        self.current_view_frame: Optional[ctk.CTkFrame] = None
 
     def update_profile_display(self, profile: Optional[dict] = None) -> None:
         """Update top bar user badge with active session or profile."""
@@ -422,9 +430,8 @@ class HospitalApp(ctk.CTk):
             role_text = current_u.get("role", "Admin")
             name_text = current_u.get("full_name", STUDENT_NAME)
         else:
-            profile = profile or get_user_profile()
-            role_text = profile.get("role", "Admin") if profile else "Admin"
-            name_text = profile.get("full_name", STUDENT_NAME) if profile else STUDENT_NAME
+            role_text = "Guest"
+            name_text = "Not Signed In"
 
         if hasattr(self, "user_lbl"):
             self.user_lbl.configure(text=f"👤 {name_text} ({role_text})")
@@ -463,15 +470,52 @@ class HospitalApp(ctk.CTk):
             on_update=self.update_notification_badge,
         )
 
+    def logout_user(self) -> None:
+        """Clear authenticated session and transition cleanly to fullscreen login view."""
+        logout()
+        self.show_login_screen()
+
     def show_login_screen(self) -> None:
-        """Display secure login view to allow role switching."""
-        self.show_view("Login")
+        """Display dedicated fullscreen login view; hide sidebar and content container."""
+        self.active_view_name = "Login"
+        if hasattr(self, "sidebar") and self.sidebar.winfo_ismapped():
+            self.sidebar.grid_remove()
+        if hasattr(self, "content_container") and self.content_container.winfo_ismapped():
+            self.content_container.grid_remove()
+
+        if hasattr(self, "login_container") and self.login_container is not None:
+            try:
+                self.login_container.destroy()
+            except Exception:
+                pass
+
+        self.login_container = ctk.CTkFrame(self, fg_color=("#F8FAFC", "#0A0F1D"))
+        self.login_container.grid(row=0, column=0, columnspan=2, sticky="nsew")
+
+        self.login_view_frame = LoginView(
+            self.login_container,
+            on_login_success=self.on_login_success,
+        )
+        self.login_view_frame.pack(fill="both", expand=True)
 
     def on_login_success(self, user: dict) -> None:
         """Callback when user successfully logs in from LoginView."""
         set_current_user(user)
+
+        if hasattr(self, "login_container") and self.login_container is not None:
+            try:
+                self.login_container.destroy()
+            except Exception:
+                pass
+            self.login_container = None
+            self.login_view_frame = None
+
+        self.sidebar.grid(row=0, column=0, sticky="nsew")
+        self.content_container.grid(row=0, column=1, sticky="nsew")
+
         self._rebuild_sidebar_menu()
         self.update_profile_display()
+
         role = user.get("role", ROLE_ADMIN)
         if role in (ROLE_DOCTOR, ROLE_PATIENT):
             self.show_view("Appointments")
@@ -541,11 +585,8 @@ class HospitalApp(ctk.CTk):
                 on_profile_updated=self.update_profile_display,
             )
         elif view_name == "Login":
-            self.view_title_lbl.configure(text="Role-Based Secure Authentication")
-            self.current_view_frame = LoginView(
-                self.content_container,
-                on_login_success=self.on_login_success,
-            )
+            self.show_login_screen()
+            return
 
         if self.current_view_frame is not None:
             self.current_view_frame.grid(row=1, column=0, sticky="nsew")
@@ -712,7 +753,8 @@ class HospitalApp(ctk.CTk):
 def main():
     """Application entry point."""
     seed_database()  # Ensure SQLite database is present and seeded
-    app = HospitalApp()
+    logout()  # Guarantee fresh launch starts in dedicated unauthenticated login view
+    app = HospitalApp(start_login=True)
     app.deiconify()
     app.lift()
     app.focus_force()
