@@ -14,6 +14,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 
+from services.auth_service import get_current_user
 from services.tqm_service import (
     DEFECT_CATEGORIES,
     DEFECT_SEVERITIES,
@@ -41,10 +42,46 @@ class TQMView(ctk.CTkFrame):
         self.active_figures: List[Figure] = []
         self.active_canvases: List[FigureCanvasTkAgg] = []
         self._notice_timer_id: Optional[str] = None
+        self.tabview: Optional[ctk.CTkFrame] = None
+        self.current_user = get_current_user() or {}
+
+        role = self.current_user.get("role")
+        if role in ("Patient", "Doctor"):
+            self._build_unauthorized_view()
+            return
 
         self._build_header()
         self._build_notification_banner()
         self._build_tabview()
+
+    def _build_unauthorized_view(self) -> None:
+        """Access denied banner displayed for roles without administrative TQM access."""
+        card = ctk.CTkFrame(
+            self,
+            fg_color=("#FFFFFF", "#0F172A"),
+            border_width=1,
+            border_color=("#FCA5A5", "#7F1D1D"),
+            corner_radius=12,
+        )
+        card.place(relx=0.5, rely=0.45, anchor="center")
+
+        pad = ctk.CTkFrame(card, fg_color="transparent")
+        pad.pack(padx=36, pady=32)
+
+        ctk.CTkLabel(
+            pad,
+            text="🔒 Access Restricted — Internal TQM Quality Toolkit",
+            font=ctk.CTkFont(size=18, weight="bold"),
+            text_color=("#DC2626", "#F87171"),
+        ).pack(pady=(0, 6))
+
+        ctk.CTkLabel(
+            pad,
+            text="Internal quality engineering methodologies (FMEA, SIPOC, CTQ, Defect checksheets, and PDCA)\nare reserved for Hospital Quality Officers, Front Desk Staff, and Administrators.\nPatients can submit direct consultation feedback under 'My Appointments'.",
+            font=ctk.CTkFont(size=12),
+            text_color=("#64748B", "#94A3B8"),
+            justify="center",
+        ).pack(pady=(0, 16))
 
     def _build_header(self) -> None:
         """Header with TQM title, coursework metadata, and refresh button."""
@@ -199,7 +236,8 @@ class TQMView(ctk.CTkFrame):
         }
 
         self.tab_buttons: Dict[str, ctk.CTkButton] = {}
-        self.active_tab_key = "1. FMEA Risk Matrix (RPN)"
+        is_staff_role = self.current_user.get("role") == "Staff"
+        self.active_tab_key = "4. Defect Checksheet Log" if is_staff_role else "1. FMEA Risk Matrix (RPN)"
 
         row1_tabs = [
             ("1. FMEA Risk Matrix (RPN)", 0),
@@ -223,6 +261,8 @@ class TQMView(ctk.CTkFrame):
                 command=lambda k=tab_name: self.switch_tab(k),
             )
             btn.grid(row=0, column=col, padx=3, pady=2, sticky="nsew")
+            if is_staff_role and tab_name != "4. Defect Checksheet Log":
+                btn.configure(state="disabled", text_color=("#94A3B8", "#475569"))
             self.tab_buttons[tab_name] = btn
 
         for tab_name, col in row2_tabs:
@@ -235,6 +275,8 @@ class TQMView(ctk.CTkFrame):
                 command=lambda k=tab_name: self.switch_tab(k),
             )
             btn.grid(row=0, column=col, padx=3, pady=2, sticky="nsew")
+            if is_staff_role and tab_name != "4. Defect Checksheet Log":
+                btn.configure(state="disabled", text_color=("#94A3B8", "#475569"))
             self.tab_buttons[tab_name] = btn
 
         # Render all tabs content
@@ -246,7 +288,8 @@ class TQMView(ctk.CTkFrame):
         self._render_pdca_tab()
         self._render_summary_tab()
 
-        # Show initial active tab (Tab 1)
+        # Show initial active tab
+        self.switch_tab(self.active_tab_key)
         self._update_tab_button_styles()
         self.tab_fmea.pack(fill="both", expand=True)
 
@@ -256,6 +299,8 @@ class TQMView(ctk.CTkFrame):
 
     def switch_tab(self, tab_key: str) -> None:
         """Switch active TQM tab view without resetting or recreating any child widgets."""
+        if self.current_user.get("role") == "Staff" and tab_key != "4. Defect Checksheet Log":
+            return
         if tab_key not in self.tab_frames or tab_key == self.active_tab_key:
             return
 

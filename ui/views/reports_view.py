@@ -13,6 +13,7 @@ from matplotlib.figure import Figure
 from matplotlib.ticker import MaxNLocator
 import matplotlib.pyplot as plt
 
+from services.auth_service import get_current_user
 from services.report_service import (
     get_appointments_by_status,
     get_appointments_over_time,
@@ -32,6 +33,14 @@ class ReportsView(ctk.CTkFrame):
         self.active_canvases: List[FigureCanvasTkAgg] = []
         self._refresh_timer_id: Optional[str] = None
 
+        self.current_user = get_current_user() or {}
+        role = self.current_user.get("role")
+        if role == "Patient":
+            self._build_unauthorized_view()
+            return
+
+        self.doctor_id = self.current_user.get("linked_doctor_id") if role == "Doctor" else None
+
         # Build UI layout
         self._build_header()
         self._build_scrollable_container()
@@ -40,6 +49,35 @@ class ReportsView(ctk.CTkFrame):
         # If CSAT report was targeted (e.g. from Dashboard KPI card), auto-scroll to it
         if self.target_report in ("csat", "satisfaction"):
             self.after(250, self._scroll_to_csat)
+
+    def _build_unauthorized_view(self) -> None:
+        """Access denied banner displayed for patient accounts."""
+        card = ctk.CTkFrame(
+            self,
+            fg_color=("#FFFFFF", "#0F172A"),
+            border_width=1,
+            border_color=("#FCA5A5", "#7F1D1D"),
+            corner_radius=12,
+        )
+        card.place(relx=0.5, rely=0.45, anchor="center")
+
+        pad = ctk.CTkFrame(card, fg_color="transparent")
+        pad.pack(padx=36, pady=32)
+
+        ctk.CTkLabel(
+            pad,
+            text="🔒 Access Restricted — Clinical Analytics",
+            font=ctk.CTkFont(size=18, weight="bold"),
+            text_color=("#DC2626", "#F87171"),
+        ).pack(pady=(0, 6))
+
+        ctk.CTkLabel(
+            pad,
+            text="Clinical reports and hospital-wide analytics are restricted to authorized Physicians and Administrators.\nPatients can view personal consultation slips and invoices under 'My Appointments'.",
+            font=ctk.CTkFont(size=12),
+            text_color=("#64748B", "#94A3B8"),
+            justify="center",
+        ).pack(pady=(0, 16))
 
     def _build_header(self) -> None:
         """Header with report title, action buttons, and responsive summary KPI cards."""
@@ -53,9 +91,12 @@ class ReportsView(ctk.CTkFrame):
         info_box = ctk.CTkFrame(top_row, fg_color="transparent")
         info_box.pack(side="left")
 
+        title_txt = "Clinical Analytics & Assigned Reports" if self.doctor_id else "Visual Analytics & Clinical Reports"
+        subtitle_txt = "Consultation status, timeline volume, and quality feedback for your assigned OPD care." if self.doctor_id else "Real-time SQLite analytics: operational status, timeline trends, workload, and CSAT."
+
         title = ctk.CTkLabel(
             info_box,
-            text="Visual Analytics & Clinical Reports",
+            text=title_txt,
             font=ctk.CTkFont(size=24, weight="bold"),
             text_color=("#0F172A", "#F8FAFC"),
         )
@@ -63,7 +104,7 @@ class ReportsView(ctk.CTkFrame):
 
         self.subtitle_lbl = ctk.CTkLabel(
             info_box,
-            text="Real-time SQLite analytics: operational status, timeline trends, workload, and CSAT.",
+            text=subtitle_txt,
             font=ctk.CTkFont(size=12),
             text_color=("#64748B", "#94A3B8"),
         )
@@ -200,7 +241,7 @@ class ReportsView(ctk.CTkFrame):
             w.destroy()
 
         # Update high-level summary KPIs
-        summary_stats = get_reports_summary_stats()
+        summary_stats = get_reports_summary_stats(doctor_id=self.doctor_id)
         self._update_kpi_pills(summary_stats)
 
         # 2-column grid configuration
@@ -300,7 +341,7 @@ class ReportsView(ctk.CTkFrame):
             text_color=("#0F172A", "#F8FAFC"),
         ).pack(anchor="w", padx=16, pady=(14, 2))
 
-        status_data = get_appointments_by_status()
+        status_data = get_appointments_by_status(doctor_id=self.doctor_id)
         total = status_data["total"]
 
         if status_data["is_empty"] or total == 0:
@@ -405,7 +446,7 @@ class ReportsView(ctk.CTkFrame):
             text_color=("#0F172A", "#F8FAFC"),
         ).pack(anchor="w", padx=16, pady=(14, 2))
 
-        timeline_data = get_appointments_over_time()
+        timeline_data = get_appointments_over_time(doctor_id=self.doctor_id)
 
         if not timeline_data:
             self._render_empty_state(
@@ -496,7 +537,37 @@ class ReportsView(ctk.CTkFrame):
     # CHART 3: DOCTOR-WISE APPOINTMENT WORKLOAD
     # =========================================================================
     def _build_doctor_workload_chart(self, parent: ctk.CTkFrame) -> None:
-        """Render Doctor-wise Appointment Workload as a readable horizontal bar chart."""
+        """Render Doctor-wise Appointment Workload as a readable horizontal bar chart, or physician-specific caseload."""
+        if self.doctor_id:
+            ctk.CTkLabel(
+                parent,
+                text="Physician Caseload & Clinical Summary",
+                font=ctk.CTkFont(size=15, weight="bold"),
+                text_color=("#0F172A", "#F8FAFC"),
+            ).pack(anchor="w", padx=16, pady=(14, 2))
+
+            my_doc = [d for d in get_doctor_workload() if d["doctor_id"] == self.doctor_id]
+            doc_name = my_doc[0]["doctor_name"] if my_doc else "Assigned Physician"
+            assigned_total = my_doc[0]["count"] if my_doc else 0
+
+            ctk.CTkLabel(
+                parent,
+                text=f"Physician: Dr. {doc_name}  •  {assigned_total} assigned consultations",
+                font=ctk.CTkFont(size=11),
+                text_color=("#64748B", "#94A3B8"),
+            ).pack(anchor="w", padx=16, pady=(0, 10))
+
+            box = ctk.CTkFrame(parent, fg_color=("#F8FAFC", "#16233E"), corner_radius=8)
+            box.pack(fill="both", expand=True, padx=16, pady=(0, 14))
+
+            st_counts = get_appointments_by_status(doctor_id=self.doctor_id)["counts"]
+            for st_name, val in st_counts.items():
+                r_line = ctk.CTkFrame(box, fg_color="transparent")
+                r_line.pack(fill="x", padx=14, pady=5)
+                ctk.CTkLabel(r_line, text=f"{st_name} Consultations:", font=ctk.CTkFont(size=12), text_color=("#475569", "#94A3B8"), anchor="w").pack(side="left")
+                ctk.CTkLabel(r_line, text=str(val), font=ctk.CTkFont(size=12, weight="bold"), text_color=("#0F172A", "#F8FAFC")).pack(side="right")
+            return
+
         ctk.CTkLabel(
             parent,
             text="Doctor-wise Workload Distribution",
@@ -603,7 +674,7 @@ class ReportsView(ctk.CTkFrame):
                 height=22,
             ).pack(side="right")
 
-        sat_data = get_patient_satisfaction_data()
+        sat_data = get_patient_satisfaction_data(doctor_id=self.doctor_id)
 
         # Requirement 2 & 4: Only display chart if actual feedback data exists
         if not sat_data["has_feedback"] or sat_data["total_rated"] == 0:

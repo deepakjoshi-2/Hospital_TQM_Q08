@@ -7,8 +7,8 @@ from typing import Any, Dict, List, Optional, Tuple
 from database.connection import get_db_connection
 
 
-def get_appointments_by_status() -> Dict[str, Any]:
-    """Query distribution of appointments grouped by status.
+def get_appointments_by_status(doctor_id: Optional[int] = None) -> Dict[str, Any]:
+    """Query distribution of appointments grouped by status, optionally scoped by physician.
     
     Returns:
         dict containing:
@@ -22,9 +22,15 @@ def get_appointments_by_status() -> Dict[str, Any]:
 
     try:
         with get_db_connection() as conn:
-            rows = conn.execute(
-                "SELECT status, COUNT(*) as c FROM appointments GROUP BY status;"
-            ).fetchall()
+            if doctor_id:
+                rows = conn.execute(
+                    "SELECT status, COUNT(*) as c FROM appointments WHERE doctor_id = ? GROUP BY status;",
+                    (doctor_id,),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT status, COUNT(*) as c FROM appointments GROUP BY status;"
+                ).fetchall()
             for r in rows:
                 status_name = r["status"]
                 c = r["c"]
@@ -40,8 +46,8 @@ def get_appointments_by_status() -> Dict[str, Any]:
     }
 
 
-def get_appointments_over_time() -> List[Dict[str, Any]]:
-    """Query daily appointment volumes ordered chronologically by appointment_date.
+def get_appointments_over_time(doctor_id: Optional[int] = None) -> List[Dict[str, Any]]:
+    """Query daily appointment volumes ordered chronologically, optionally scoped by doctor.
     
     Returns:
         list of dicts: [{'date': 'YYYY-MM-DD', 'count': N}, ...]
@@ -49,14 +55,26 @@ def get_appointments_over_time() -> List[Dict[str, Any]]:
     results = []
     try:
         with get_db_connection() as conn:
-            rows = conn.execute(
-                """
-                SELECT appointment_date, COUNT(*) as c
-                FROM appointments
-                GROUP BY appointment_date
-                ORDER BY appointment_date ASC;
-                """
-            ).fetchall()
+            if doctor_id:
+                rows = conn.execute(
+                    """
+                    SELECT appointment_date, COUNT(*) as c
+                    FROM appointments
+                    WHERE doctor_id = ?
+                    GROUP BY appointment_date
+                    ORDER BY appointment_date ASC;
+                    """,
+                    (doctor_id,),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT appointment_date, COUNT(*) as c
+                    FROM appointments
+                    GROUP BY appointment_date
+                    ORDER BY appointment_date ASC;
+                    """
+                ).fetchall()
             results = [{"date": r["appointment_date"], "count": r["c"]} for r in rows]
     except Exception as e:
         print(f"Error querying appointments over time: {e}")
@@ -102,8 +120,8 @@ def get_doctor_workload() -> List[Dict[str, Any]]:
     return results
 
 
-def get_patient_satisfaction_data() -> Dict[str, Any]:
-    """Query patient satisfaction (CSAT) ratings from appointments.
+def get_patient_satisfaction_data(doctor_id: Optional[int] = None) -> Dict[str, Any]:
+    """Query patient satisfaction (CSAT) ratings from appointments, optionally scoped by doctor.
     
     Returns:
         dict containing:
@@ -119,15 +137,27 @@ def get_patient_satisfaction_data() -> Dict[str, Any]:
 
     try:
         with get_db_connection() as conn:
-            rows = conn.execute(
-                """
-                SELECT satisfaction_rating, COUNT(*) as c
-                FROM appointments
-                WHERE satisfaction_rating IS NOT NULL
-                GROUP BY satisfaction_rating
-                ORDER BY satisfaction_rating ASC;
-                """
-            ).fetchall()
+            if doctor_id:
+                rows = conn.execute(
+                    """
+                    SELECT satisfaction_rating, COUNT(*) as c
+                    FROM appointments
+                    WHERE satisfaction_rating IS NOT NULL AND doctor_id = ?
+                    GROUP BY satisfaction_rating
+                    ORDER BY satisfaction_rating ASC;
+                    """,
+                    (doctor_id,),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT satisfaction_rating, COUNT(*) as c
+                    FROM appointments
+                    WHERE satisfaction_rating IS NOT NULL
+                    GROUP BY satisfaction_rating
+                    ORDER BY satisfaction_rating ASC;
+                    """
+                ).fetchall()
             for r in rows:
                 rating = r["satisfaction_rating"]
                 c = r["c"]
@@ -151,8 +181,8 @@ def get_patient_satisfaction_data() -> Dict[str, Any]:
     }
 
 
-def get_reports_summary_stats() -> Dict[str, Any]:
-    """Fetch high-level overview metrics for the reports header."""
+def get_reports_summary_stats(doctor_id: Optional[int] = None) -> Dict[str, Any]:
+    """Fetch high-level overview metrics for reports header, optionally scoped by physician."""
     summary = {
         "total_appointments": 0,
         "completed_count": 0,
@@ -169,7 +199,14 @@ def get_reports_summary_stats() -> Dict[str, Any]:
     try:
         with get_db_connection() as conn:
             # Appointments breakdown
-            a_rows = conn.execute("SELECT status, COUNT(*) as c FROM appointments GROUP BY status;").fetchall()
+            if doctor_id:
+                a_rows = conn.execute(
+                    "SELECT status, COUNT(*) as c FROM appointments WHERE doctor_id = ? GROUP BY status;",
+                    (doctor_id,),
+                ).fetchall()
+            else:
+                a_rows = conn.execute("SELECT status, COUNT(*) as c FROM appointments GROUP BY status;").fetchall()
+
             total_a = 0
             for r in a_rows:
                 cnt = r["c"]
@@ -188,18 +225,36 @@ def get_reports_summary_stats() -> Dict[str, Any]:
                 summary["completion_rate_pct"] = round((summary["completed_count"] / total_a) * 100, 1)
 
             # Doctors count
-            d_row = conn.execute("SELECT COUNT(*) as c FROM doctors;").fetchone()
-            summary["total_doctors"] = d_row["c"] if d_row else 0
+            if doctor_id:
+                summary["total_doctors"] = 1
+            else:
+                d_row = conn.execute("SELECT COUNT(*) as c FROM doctors;").fetchone()
+                summary["total_doctors"] = d_row["c"] if d_row else 0
 
             # Patients count
-            p_row = conn.execute("SELECT COUNT(*) as c FROM patients;").fetchone()
-            summary["total_patients"] = p_row["c"] if p_row else 0
+            if doctor_id:
+                p_row = conn.execute(
+                    "SELECT COUNT(DISTINCT patient_id) as c FROM appointments WHERE doctor_id = ?;",
+                    (doctor_id,),
+                ).fetchone()
+                summary["total_patients"] = p_row["c"] if p_row else 0
+            else:
+                p_row = conn.execute("SELECT COUNT(*) as c FROM patients;").fetchone()
+                summary["total_patients"] = p_row["c"] if p_row else 0
 
             # CSAT score
-            sat = conn.execute(
-                "SELECT AVG(satisfaction_rating) as avg_r, COUNT(satisfaction_rating) as total_r "
-                "FROM appointments WHERE satisfaction_rating IS NOT NULL;"
-            ).fetchone()
+            if doctor_id:
+                sat = conn.execute(
+                    "SELECT AVG(satisfaction_rating) as avg_r, COUNT(satisfaction_rating) as total_r "
+                    "FROM appointments WHERE satisfaction_rating IS NOT NULL AND doctor_id = ?;",
+                    (doctor_id,),
+                ).fetchone()
+            else:
+                sat = conn.execute(
+                    "SELECT AVG(satisfaction_rating) as avg_r, COUNT(satisfaction_rating) as total_r "
+                    "FROM appointments WHERE satisfaction_rating IS NOT NULL;"
+                ).fetchone()
+
             if sat and sat["total_r"] and sat["total_r"] > 0:
                 summary["average_csat"] = round(sat["avg_r"], 2)
                 summary["has_feedback"] = True
