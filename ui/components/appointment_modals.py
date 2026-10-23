@@ -15,6 +15,7 @@ from services.appointment_service import (
     get_doctor_dropdown_options,
     get_next_appointment_code,
     get_patient_dropdown_options,
+    submit_visit_feedback,
     update_appointment,
 )
 
@@ -174,7 +175,7 @@ class AppointmentFormModal(ctk.CTkToplevel):
         )
         cancel_btn.pack(side="right", padx=(8, 12), pady=10)
 
-        save_btn = ctk.CTkButton(
+        self.save_btn = ctk.CTkButton(
             self.footer_frame,
             text="✓ Save Appointment" if self.is_edit else "✓ Confirm Booking",
             font=ctk.CTkFont(size=12, weight="bold"),
@@ -183,7 +184,7 @@ class AppointmentFormModal(ctk.CTkToplevel):
             height=32,
             command=self._on_save,
         )
-        save_btn.pack(side="right", pady=10)
+        self.save_btn.pack(side="right", pady=10)
 
     def _build_scrollable_form(self) -> None:
         """Scrollable form container occupying the center between header and footer."""
@@ -247,23 +248,37 @@ class AppointmentFormModal(ctk.CTkToplevel):
         self.slot_menu.set(d.get("time_slot") or "10:00 AM")
         self.slot_menu.grid(row=7, column=1, padx=8, pady=(0, 6), sticky="ew")
 
-        # Row 8: Status & Satisfaction Rating
+        # Row 8: Status & Info (CSAT rating removed from booking form per TQM Q08 rules)
         ctk.CTkLabel(self.form_scroll, text="Consultation Status *", font=ctk.CTkFont(size=11, weight="bold"), text_color=("#475569", "#94A3B8"), anchor="w").grid(row=8, column=0, padx=8, pady=(4, 1), sticky="w")
-        ctk.CTkLabel(self.form_scroll, text="Satisfaction Rating (CSAT)", font=ctk.CTkFont(size=11, weight="bold"), text_color=("#475569", "#94A3B8"), anchor="w").grid(row=8, column=1, padx=8, pady=(4, 1), sticky="w")
-
+        
         self.status_menu = ctk.CTkOptionMenu(self.form_scroll, values=APPOINTMENT_STATUSES, height=32)
-        self.status_menu.set(d.get("status") or "Scheduled")
+        self.status_menu.set(d.get("status") or ("Confirmed" if not self.is_edit else "Scheduled"))
         self.status_menu.grid(row=9, column=0, padx=8, pady=(0, 6), sticky="ew")
 
-        rating_options = ["None", "5 ★ (Excellent)", "4 ★ (Good)", "3 ★ (Average)", "2 ★ (Poor)", "1 ★ (Very Poor)"]
-        self.rating_menu = ctk.CTkOptionMenu(self.form_scroll, values=rating_options, height=32)
-        existing_rating = d.get("satisfaction_rating")
-        if existing_rating:
-            matched = [opt for opt in rating_options if opt.startswith(str(existing_rating))]
-            self.rating_menu.set(matched[0] if matched else "None")
+        if self.is_edit and d.get("status") == "Completed":
+            ctk.CTkLabel(self.form_scroll, text="Recorded CSAT Rating", font=ctk.CTkFont(size=11, weight="bold"), text_color=("#475569", "#94A3B8"), anchor="w").grid(row=8, column=1, padx=8, pady=(4, 1), sticky="w")
+            rating_options = ["None", "5 ★ (Excellent)", "4 ★ (Good)", "3 ★ (Average)", "2 ★ (Poor)", "1 ★ (Very Poor)"]
+            self.rating_menu = ctk.CTkOptionMenu(self.form_scroll, values=rating_options, height=32)
+            existing_rating = d.get("satisfaction_rating")
+            if existing_rating:
+                matched = [opt for opt in rating_options if opt.startswith(str(existing_rating))]
+                self.rating_menu.set(matched[0] if matched else "None")
+            else:
+                self.rating_menu.set("None")
+            self.rating_menu.grid(row=9, column=1, padx=8, pady=(0, 6), sticky="ew")
         else:
-            self.rating_menu.set("None")
-        self.rating_menu.grid(row=9, column=1, padx=8, pady=(0, 6), sticky="ew")
+            self.rating_menu = None
+            ctk.CTkLabel(self.form_scroll, text="Satisfaction Policy", font=ctk.CTkFont(size=11, weight="bold"), text_color=("#475569", "#94A3B8"), anchor="w").grid(row=8, column=1, padx=8, pady=(4, 1), sticky="w")
+            policy_lbl = ctk.CTkLabel(
+                self.form_scroll,
+                text="⭐ CSAT feedback is collected post-visit after completion.",
+                font=ctk.CTkFont(size=10),
+                text_color=("#0284C7", "#38BDF8"),
+                fg_color=("#E0F2FE", "#0C2E4E"),
+                corner_radius=6,
+                height=32,
+            )
+            policy_lbl.grid(row=9, column=1, padx=8, pady=(0, 6), sticky="ew")
 
         # Row 10: Reason for Visit
         ctk.CTkLabel(self.form_scroll, text="Reason for Visit *", font=ctk.CTkFont(size=11, weight="bold"), text_color=("#475569", "#94A3B8"), anchor="w").grid(row=10, column=0, columnspan=2, padx=8, pady=(4, 1), sticky="w")
@@ -331,13 +346,14 @@ class AppointmentFormModal(ctk.CTkToplevel):
             self.save_btn.configure(state="normal", text="✓ Save Changes" if self.is_edit else "✓ Confirm & Book Appointment")
             return
 
-        rating_choice = self.rating_menu.get()
         rating_val = None
-        if rating_choice and rating_choice != "None":
-            try:
-                rating_val = int(rating_choice[0])
-            except (ValueError, IndexError):
-                rating_val = None
+        if self.is_edit and self.rating_menu is not None:
+            rating_choice = self.rating_menu.get()
+            if rating_choice and rating_choice != "None":
+                try:
+                    rating_val = int(rating_choice[0])
+                except (ValueError, IndexError):
+                    rating_val = None
 
         data = {
             "appointment_code": self.code_entry.get().strip(),
@@ -367,7 +383,8 @@ class AppointmentFormModal(ctk.CTkToplevel):
             # Show appointment confirmation dialog for newly booked appointments
             if not self.is_edit and new_appointment_id:
                 try:
-                    AppointmentConfirmationModal(master_window, appointment_id=new_appointment_id)
+                    top_win = master_window.winfo_toplevel() if hasattr(master_window, "winfo_toplevel") else master_window
+                    AppointmentConfirmationModal(top_win, appointment_id=new_appointment_id)
                 except Exception as ex:
                     print(f"Error opening confirmation modal: {ex}")
         else:
@@ -733,3 +750,143 @@ class AppointmentConfirmationModal(ctk.CTkToplevel):
         self.destroy()
         if self.on_close:
             self.on_close()
+
+
+class PostVisitFeedbackModal(ctk.CTkToplevel):
+    """Post-visit patient satisfaction (CSAT) rating and feedback submission dialog.
+    
+    Adheres to TQM Q08 requirements: feedback is only collected after consultation is Completed.
+    """
+
+    def __init__(
+        self,
+        master,
+        appointment_row: Dict,
+        on_success: Optional[Callable[[str], None]] = None,
+        **kwargs,
+    ):
+        super().__init__(master, **kwargs)
+        self.appointment_row = appointment_row
+        self.appointment_id = appointment_row["id"]
+        self.on_success = on_success
+
+        code = appointment_row.get("appointment_code", "APT-XXXX")
+        self.title(f"Post-Visit Quality Feedback — {code}")
+        self.resizable(False, False)
+        self.transient(master)
+        self.grab_set()
+
+        self._apply_geometry()
+        self._build_ui()
+
+        self.bind("<Escape>", lambda e: self.destroy())
+        self.lift()
+        self.focus_force()
+
+    def _apply_geometry(self) -> None:
+        self.update_idletasks()
+        sw = self.winfo_screenwidth()
+        sh = self.winfo_screenheight()
+        w, h = 480, 420
+        x = max(0, (sw - w) // 2)
+        y = max(10, (sh - h) // 2 - 20)
+        self.geometry(f"{w}x{h}+{x}+{y}")
+
+    def _build_ui(self) -> None:
+        pad = ctk.CTkFrame(self, fg_color="transparent")
+        pad.pack(fill="both", expand=True, padx=22, pady=18)
+
+        # Header
+        t_lbl = ctk.CTkLabel(
+            pad,
+            text="⭐ Patient Consultation Feedback (CSAT)",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            text_color=("#0284C7", "#38BDF8"),
+            anchor="w",
+        )
+        t_lbl.pack(fill="x")
+
+        a = self.appointment_row
+        meta_txt = f"Consultation Ref: {a.get('appointment_code', '')}  |  Date: {a.get('appointment_date', '')} {a.get('time_slot', '')}"
+        m_lbl = ctk.CTkLabel(pad, text=meta_txt, font=ctk.CTkFont(size=11), text_color=("#64748B", "#94A3B8"), anchor="w")
+        m_lbl.pack(fill="x", pady=(2, 10))
+
+        doc_txt = f"Physician: {a.get('doctor_name', 'Physician')} ({a.get('specialization', '')})"
+        ctk.CTkLabel(pad, text=doc_txt, font=ctk.CTkFont(size=11, weight="bold"), text_color=("#0F172A", "#F8FAFC"), anchor="w").pack(fill="x", pady=(0, 10))
+
+        # Rating selection
+        ctk.CTkLabel(pad, text="Overall Consultation Satisfaction Rating *", font=ctk.CTkFont(size=11, weight="bold"), text_color=("#475569", "#94A3B8"), anchor="w").pack(fill="x", pady=(0, 4))
+
+        self.rating_options = [
+            "5 ★ — Excellent (Highly Satisfied)",
+            "4 ★ — Good (Satisfied)",
+            "3 ★ — Average (Neutral Experience)",
+            "2 ★ — Poor (Dissatisfied with Care)",
+            "1 ★ — Very Poor (Service Defect / Complaint)",
+        ]
+        self.rating_menu = ctk.CTkOptionMenu(pad, values=self.rating_options, height=34)
+        self.rating_menu.set(self.rating_options[0])
+        self.rating_menu.pack(fill="x", pady=(0, 12))
+
+        # Feedback Comments / Notes
+        ctk.CTkLabel(pad, text="Feedback Comments / Suggestions (Optional)", font=ctk.CTkFont(size=11, weight="bold"), text_color=("#475569", "#94A3B8"), anchor="w").pack(fill="x", pady=(0, 4))
+
+        self.comments_entry = ctk.CTkEntry(
+            pad,
+            placeholder_text="e.g. Prompt diagnosis, courteous staff, minimal waiting time",
+            height=34,
+        )
+        self.comments_entry.pack(fill="x", pady=(0, 12))
+
+        # Error / Status message banner
+        self.err_lbl = ctk.CTkLabel(pad, text="", font=ctk.CTkFont(size=11), text_color="#EF4444", anchor="w")
+        self.err_lbl.pack(fill="x", pady=(0, 8))
+
+        # Fixed Footer Buttons
+        footer = ctk.CTkFrame(pad, fg_color="transparent")
+        footer.pack(fill="x", side="bottom")
+
+        close_btn = ctk.CTkButton(
+            footer,
+            text="Cancel",
+            width=80,
+            height=34,
+            fg_color=("#E2E8F0", "#334155"),
+            text_color=("#0F172A", "#F8FAFC"),
+            hover_color=("#CBD5E1", "#475569"),
+            command=self.destroy,
+        )
+        close_btn.pack(side="right", padx=(8, 0))
+
+        self.submit_btn = ctk.CTkButton(
+            footer,
+            text="⭐ Submit Quality Feedback",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            fg_color=("#0284C7", "#0284C7"),
+            hover_color=("#0369A1", "#0369A1"),
+            height=34,
+            command=self._do_submit,
+        )
+        self.submit_btn.pack(side="right")
+
+    def _do_submit(self) -> None:
+        self.err_lbl.configure(text="")
+        choice = self.rating_menu.get()
+        try:
+            rating_val = int(choice[0])
+        except (ValueError, IndexError):
+            self.err_lbl.configure(text="Please select a valid rating.")
+            return
+
+        comments = self.comments_entry.get().strip()
+        self.submit_btn.configure(state="disabled", text="Submitting...")
+        self.update_idletasks()
+
+        ok, msg = submit_visit_feedback(self.appointment_id, rating_val, comments)
+        if ok:
+            self.destroy()
+            if self.on_success:
+                self.on_success(msg)
+        else:
+            self.err_lbl.configure(text=msg)
+            self.submit_btn.configure(state="normal", text="⭐ Submit Quality Feedback")

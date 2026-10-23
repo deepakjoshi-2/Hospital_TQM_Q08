@@ -224,6 +224,24 @@ def create_appointment(data: Dict[str, any]) -> Tuple[bool, str, Optional[int]]:
     status = str(data.get("status", STATUS_CONFIRMED)).strip()
     appt_code = str(data["appointment_code"]).strip().upper()
 
+    # 1b. Reject archived/inactive patients and on-leave/inactive physicians
+    try:
+        with get_db_connection() as conn:
+            p_row = conn.execute("SELECT id, status FROM patients WHERE id = ?;", (patient_id,)).fetchone()
+            if not p_row:
+                return False, f"Selected patient record (ID: {patient_id}) does not exist.", None
+            if p_row["status"] in ("Archived", "Discharged", "Inactive"):
+                return False, f"Cannot book appointment: Patient record is '{p_row['status']}'. Only active patients can be scheduled.", None
+
+            doc_row = conn.execute("SELECT id, status, consultation_fee FROM doctors WHERE id = ?;", (doctor_id,)).fetchone()
+            if not doc_row:
+                return False, f"Selected doctor record (ID: {doctor_id}) does not exist.", None
+            if doc_row["status"] in ("On Leave", "Inactive"):
+                return False, f"Cannot book appointment: Physician is currently '{doc_row['status']}'. Please select an available physician.", None
+            default_doc_fee = float(doc_row["consultation_fee"]) if doc_row["consultation_fee"] is not None else 500.0
+    except Exception as e:
+        return False, f"Validation verification error: {e}", None
+
     # 2. Collision checks
     if status != STATUS_CANCELLED:
         has_conflict, conflict_code = check_slot_conflict(doctor_id, appt_date, time_slot)
@@ -247,17 +265,15 @@ def create_appointment(data: Dict[str, any]) -> Tuple[bool, str, Optional[int]]:
     # 3. Freeze Consultation Fee from Doctor Table if not provided
     consultation_fee = data.get("consultation_fee")
     if consultation_fee is None:
-        try:
-            with get_db_connection() as conn:
-                doc_row = conn.execute("SELECT consultation_fee FROM doctors WHERE id = ?;", (doctor_id,)).fetchone()
-                consultation_fee = float(doc_row["consultation_fee"]) if doc_row else 500.0
-        except Exception:
-            consultation_fee = 500.0
+        consultation_fee = default_doc_fee
     else:
-        consultation_fee = float(consultation_fee)
+        try:
+            consultation_fee = float(consultation_fee)
+        except (ValueError, TypeError):
+            consultation_fee = default_doc_fee
 
-    rating = data.get("satisfaction_rating")
-    rating_val = int(rating) if rating is not None and str(rating).strip() not in ("", "None") else None
+    # Satisfaction ratings can only be collected post-visit once the consultation is Completed
+    rating_val = None
 
     # 4. Insert into SQLite
     try:
@@ -280,7 +296,7 @@ def create_appointment(data: Dict[str, any]) -> Tuple[bool, str, Optional[int]]:
                     status,
                     consultation_fee,
                     rating_val,
-                    str(data.get("notes", "")).strip() or None,
+                    str(data.get("notes") or "").strip() or None,
                 ),
             )
             new_id = cursor.lastrowid
@@ -395,7 +411,7 @@ def update_appointment(appointment_id: int, data: Dict[str, any]) -> Tuple[bool,
                     new_status,
                     fee_val,
                     rating_val,
-                    str(data.get("notes", "")).strip() or None,
+                    str(data.get("notes") or "").strip() or None,
                     appointment_id,
                 ),
             )
@@ -564,3 +580,52 @@ def get_filtered_appointments(
     except Exception as e:
         print(f"Error fetching filtered appointments: {e}")
         return []
+
+
+def submit_visit_feedback(
+    appointment_id: int,
+    satisfaction_rating: int,
+    feedback_notes: Optional[str] = None,
+) -> Tuple[bool, str]:
+    """Record patient satisfaction rating (1-5 stars) and feedback notes for a completed visit.
+    
+    Guarantees feedback is only accepted for 'Completed' consultations and blocks duplicate submissions.
+    """
+    try:
+        rating_val = int(satisfaction_rating)
+        if rating_val < 1 or rating_val > 5:
+            return False, "Satisfaction rating must be an integer between 1 and 5 stars."
+    except (ValueError, TypeError):
+        return False, "Invalid rating value provided. Must be an integer between 1 and 5."
+
+    try:
+        with get_db_connection() as conn:
+            row = conn.execute(
+                "SELECT id, status, satisfaction_rating, notes, appointment_code FROM appointments WHERE id = ?;",
+                (appointment_id,),
+            ).fetchone()
+            if not row:
+                return False, f"Appointment ID {appointment_id} not found."
+
+            if row["status"] != STATUS_COMPLETED:
+                return False, f"Feedback can only be submitted for 'Completed' consultations. Current status is '{row['status']}'."
+
+            if row["satisfaction_rating"] is not None:
+                return False, f"Feedback has already been recorded for this appointment ({row['satisfaction_rating']} ★). Duplicate submissions are blocked."
+
+            existing_notes = row["notes"] or ""
+            new_notes = existing_notes
+            if feedback_notes and feedback_notes.strip():
+                clean_comment = feedback_notes.strip()
+                tag = f"[Post-Visit Feedback: {rating_val}★ - {clean_comment}]"
+                new_notes = f"{existing_notes}\n{tag}".strip() if existing_notes else tag
+
+            with get_db_cursor() as (conn2, cursor):
+                cursor.execute(
+                    "UPDATE appointments SET satisfaction_rating = ?, notes = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;",
+                    (rating_val, new_notes, appointment_id),
+                )
+
+            return True, f"Thank you! Your {rating_val}★ feedback for {row['appointment_code']} has been recorded successfully."
+    except Exception as e:
+        return False, f"Error saving feedback: {e}"

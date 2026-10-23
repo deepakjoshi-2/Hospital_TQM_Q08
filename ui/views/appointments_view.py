@@ -12,6 +12,7 @@ from ui.components.appointment_modals import (
     AppointmentConfirmationModal,
     AppointmentFormModal,
     ConfirmAppointmentActionModal,
+    PostVisitFeedbackModal,
 )
 
 
@@ -139,19 +140,24 @@ class AppointmentsView(ctk.CTkFrame):
         )
         self.export_btn.pack(side="left", padx=(0, 10))
 
-        # + Book Appointment Button (Prominent Action) - Sized generously to guarantee full label visibility
-        self.add_btn = ctk.CTkButton(
-            self.actions_box,
-            text="＋ Book Appointment",
-            font=ctk.CTkFont(size=13, weight="bold"),
-            fg_color="#0284C7",
-            hover_color="#0369A1",
-            width=175,
-            height=36,
-            corner_radius=8,
-            command=self._open_add_modal,
-        )
-        self.add_btn.pack(side="left")
+        # + Book Appointment Button (Only for Admin, Staff, and Patients - Doctors manage assigned schedule)
+        u = get_current_user() or {}
+        user_role = u.get("role")
+        if user_role != "Doctor":
+            self.add_btn = ctk.CTkButton(
+                self.actions_box,
+                text="＋ Book Appointment",
+                font=ctk.CTkFont(size=13, weight="bold"),
+                fg_color="#0284C7",
+                hover_color="#0369A1",
+                width=175,
+                height=36,
+                corner_radius=8,
+                command=self._open_add_modal,
+            )
+            self.add_btn.pack(side="left")
+        else:
+            self.add_btn = None
 
         # Row 2: Search Entry + Status Filter + Clear Button
         self.filter_row = ctk.CTkFrame(self.header, fg_color="transparent")
@@ -270,12 +276,12 @@ class AppointmentsView(ctk.CTkFrame):
         headers = [
             ("Code", 75),
             ("Date & Time", 125),
-            ("Patient Name", 135),
-            ("Physician", 140),
-            ("Priority", 75),
+            ("Patient Name", 130),
+            ("Physician", 135),
+            ("Priority", 70),
             ("Status", 85),
             ("Rating", 55),
-            ("Actions", 165),
+            ("Actions", 210),
         ]
         for h_text, width in headers:
             lbl = ctk.CTkLabel(
@@ -407,11 +413,11 @@ class AppointmentsView(ctk.CTkFrame):
                 anchor="w",
             ).pack(side="left", padx=6)
 
-            # 8. Actions Frame (Slip + Edit + Del/Cancel)
-            act_frame = ctk.CTkFrame(row, fg_color="transparent", width=165)
+            # 8. Actions Frame (Slip + Edit + Del/Cancel + Feedback)
+            act_frame = ctk.CTkFrame(row, fg_color="transparent", width=210)
             act_frame.pack(side="left", padx=6)
 
-            # Slip Button
+            # Slip Button (Available to all authorized roles)
             slip_btn = ctk.CTkButton(
                 act_frame,
                 text="📋 Slip",
@@ -426,47 +432,80 @@ class AppointmentsView(ctk.CTkFrame):
                 corner_radius=6,
                 command=lambda a_id=a["id"]: self._open_slip_modal(a_id),
             )
-            slip_btn.pack(side="left", padx=(0, 4))
+            slip_btn.pack(side="left", padx=(0, 3))
 
-            # Edit Button
-            edit_btn = ctk.CTkButton(
-                act_frame,
-                text="✏️ Edit",
-                font=ctk.CTkFont(size=11, weight="bold"),
-                fg_color=("#E2E8F0", "#334155"),
-                text_color=("#0F172A", "#F8FAFC"),
-                hover_color=("#CBD5E1", "#475569"),
-                width=48,
-                height=26,
-                corner_radius=6,
-                command=lambda a_row=a: self._open_edit_modal(a_row),
-            )
-            edit_btn.pack(side="left", padx=(0, 4))
+            # Edit Button (For Admin, Staff, and Doctor)
+            user = get_current_user() or {}
+            role = user.get("role")
+            if role in ("Hospital Administrator", "Staff", "Doctor") or role is None:
+                edit_txt = "✏️ Note" if role == "Doctor" else "✏️ Edit"
+                edit_btn = ctk.CTkButton(
+                    act_frame,
+                    text=edit_txt,
+                    font=ctk.CTkFont(size=11, weight="bold"),
+                    fg_color=("#E2E8F0", "#334155"),
+                    text_color=("#0F172A", "#F8FAFC"),
+                    hover_color=("#CBD5E1", "#475569"),
+                    width=48,
+                    height=26,
+                    corner_radius=6,
+                    command=lambda a_row=a: self._open_edit_modal(a_row),
+                )
+                edit_btn.pack(side="left", padx=(0, 3))
 
-            # Delete / Cancel Button
-            del_btn = ctk.CTkButton(
-                act_frame,
-                text="🗑️ Del",
-                font=ctk.CTkFont(size=11, weight="bold"),
-                fg_color=("#FEE2E2", "#7F1D1D"),
-                text_color=("#DC2626", "#FCA5A5"),
-                hover_color=("#FECACA", "#991B1B"),
-                width=48,
-                height=26,
-                corner_radius=6,
-                command=lambda a_row=a: self._open_confirm_modal(a_row),
-            )
-            del_btn.pack(side="left")
+            # Delete / Cancel Button (strictly Admin and Staff only; Doctors cannot delete appointments)
+            if role in ("Hospital Administrator", "Staff") or role is None:
+                del_btn = ctk.CTkButton(
+                    act_frame,
+                    text="🗑️ Del",
+                    font=ctk.CTkFont(size=11, weight="bold"),
+                    fg_color=("#FEE2E2", "#7F1D1D"),
+                    text_color=("#DC2626", "#FCA5A5"),
+                    hover_color=("#FECACA", "#991B1B"),
+                    width=46,
+                    height=26,
+                    corner_radius=6,
+                    command=lambda a_row=a: self._open_confirm_modal(a_row),
+                )
+                del_btn.pack(side="left", padx=(0, 3))
+
+            # Post-Visit Feedback Button (shown when Completed and not yet rated)
+            if a["status"] == "Completed" and a.get("satisfaction_rating") is None:
+                fb_btn = ctk.CTkButton(
+                    act_frame,
+                    text="⭐ Rate",
+                    font=ctk.CTkFont(size=11, weight="bold"),
+                    fg_color=("#FEF3C7", "#451A03"),
+                    text_color=("#B45309", "#FBBF24"),
+                    hover_color=("#FDE68A", "#78350F"),
+                    width=52,
+                    height=26,
+                    corner_radius=6,
+                    command=lambda a_row=a: self._open_feedback_modal(a_row),
+                )
+                fb_btn.pack(side="left")
 
     def _open_slip_modal(self, appointment_id: int) -> None:
         """Open appointment confirmation slip modal."""
         AppointmentConfirmationModal(self.winfo_toplevel(), appointment_id=appointment_id)
 
+    def _open_feedback_modal(self, appointment_row: dict) -> None:
+        """Open post-visit satisfaction rating and feedback modal."""
+        PostVisitFeedbackModal(
+            self.winfo_toplevel(),
+            appointment_row=appointment_row,
+            on_success=self._on_action_success,
+        )
+
     def _open_add_modal(self) -> None:
         """Open modal form to book a new appointment."""
+        user = get_current_user() or {}
+        default_data = None
+        if user.get("role") == "Patient" and user.get("linked_patient_id"):
+            default_data = {"patient_id": user["linked_patient_id"]}
         AppointmentFormModal(
             self.winfo_toplevel(),
-            appointment_data=None,
+            appointment_data=default_data,
             on_success=self._on_action_success,
         )
 
