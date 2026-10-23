@@ -222,11 +222,29 @@ def get_bills(
         return []
 
 
-def get_billing_summary_statistics() -> Dict[str, float]:
-    """Calculate aggregated billing KPIs: Total Invoiced, Total Collected, Outstanding."""
+def get_billing_summary_statistics(
+    patient_id: Optional[int] = None,
+    doctor_id: Optional[int] = None,
+    user: Optional[Dict] = None,
+) -> Dict[str, float]:
+    """Calculate aggregated billing KPIs scoped strictly by role or specific patient/doctor.
+    
+    Hospital Administrator & Staff: Authorized panoramic or operational totals.
+    Doctor: Specific to consultations assigned to the doctor.
+    Patient: Specific only to patient's own invoices and payments (never hospital-wide revenue).
+    """
+    target_patient_id = patient_id
+    target_doctor_id = doctor_id
+    if user:
+        r = user.get("role")
+        if r == "Patient" and user.get("linked_patient_id"):
+            target_patient_id = user["linked_patient_id"]
+        elif r == "Doctor" and user.get("linked_doctor_id"):
+            target_doctor_id = user["linked_doctor_id"]
+
     try:
         with get_db_connection() as conn:
-            cursor = conn.execute("""
+            sql = """
                 SELECT 
                     COUNT(*) as total_bills,
                     COALESCE(SUM(total_amount), 0.0) as total_invoiced,
@@ -235,8 +253,18 @@ def get_billing_summary_statistics() -> Dict[str, float]:
                     SUM(CASE WHEN payment_status = 'Paid' THEN 1 ELSE 0 END) as paid_count,
                     SUM(CASE WHEN payment_status = 'Partially Paid' THEN 1 ELSE 0 END) as partial_count,
                     SUM(CASE WHEN payment_status = 'Unpaid' THEN 1 ELSE 0 END) as unpaid_count
-                FROM bills;
-            """)
+                FROM bills
+                WHERE 1=1
+            """
+            params = []
+            if target_patient_id:
+                sql += " AND patient_id = ?"
+                params.append(target_patient_id)
+            elif target_doctor_id:
+                sql += " AND doctor_id = ?"
+                params.append(target_doctor_id)
+
+            cursor = conn.execute(sql, tuple(params))
             row = cursor.fetchone()
             return dict(row) if row else {
                 "total_bills": 0, "total_invoiced": 0.0, "total_collected": 0.0,
@@ -248,6 +276,24 @@ def get_billing_summary_statistics() -> Dict[str, float]:
             "total_bills": 0, "total_invoiced": 0.0, "total_collected": 0.0,
             "total_outstanding": 0.0, "paid_count": 0, "partial_count": 0, "unpaid_count": 0,
         }
+
+
+def sync_unbilled_appointments() -> int:
+    """Ensure every existing appointment in SQLite has a corresponding billing record."""
+    synced_count = 0
+    try:
+        with get_db_connection() as conn:
+            missing = conn.execute("""
+                SELECT id FROM appointments
+                WHERE id NOT IN (SELECT appointment_id FROM bills WHERE appointment_id IS NOT NULL);
+            """).fetchall()
+            for r in missing:
+                ok, _, _ = create_bill_for_appointment(r["id"])
+                if ok:
+                    synced_count += 1
+    except Exception as e:
+        print(f"Error syncing unbilled appointments: {e}")
+    return synced_count
 
 
 # ==============================================================================

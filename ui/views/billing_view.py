@@ -9,6 +9,7 @@ from services.billing_service import (
     get_billing_summary_statistics,
     get_bills,
     get_payments_for_bill,
+    sync_unbilled_appointments,
 )
 from ui.components.billing_modals import RecordPaymentModal, ReceiptViewModal
 from ui.components.scroll_manager import ScrollManager
@@ -79,17 +80,17 @@ class BillingView(ctk.CTkFrame):
         self.kpi_container.grid_columnconfigure((0, 1, 2), weight=1)
 
         # 1. Total Invoiced Card
-        self.card_invoiced = self._create_metric_card(
+        self.card_invoiced, self.card_invoiced_title, self.card_invoiced_desc = self._create_metric_card(
             self.kpi_container, 0, "TOTAL INVOICED", "Rs. 0.00", "Consultation fees billed", ("#0284C7", "#06B6D4")
         )
 
         # 2. Total Collected Card
-        self.card_collected = self._create_metric_card(
+        self.card_collected, self.card_collected_title, self.card_collected_desc = self._create_metric_card(
             self.kpi_container, 1, "TOTAL COLLECTED", "Rs. 0.00", "Settled patient payments", ("#16A34A", "#22C55E")
         )
 
         # 3. Total Outstanding Card
-        self.card_outstanding = self._create_metric_card(
+        self.card_outstanding, self.card_outstanding_title, self.card_outstanding_desc = self._create_metric_card(
             self.kpi_container, 2, "OUTSTANDING DUES", "Rs. 0.00", "Unpaid consultation balance", ("#D97706", "#F59E0B")
         )
 
@@ -105,7 +106,8 @@ class BillingView(ctk.CTkFrame):
 
         top = ctk.CTkFrame(card, fg_color="transparent")
         top.pack(fill="x", padx=14, pady=(12, 2))
-        ctk.CTkLabel(top, text=title, font=ctk.CTkFont(size=10, weight="bold"), text_color=("#64748B", "#94A3B8"), anchor="w").pack(side="left")
+        t_lbl = ctk.CTkLabel(top, text=title, font=ctk.CTkFont(size=10, weight="bold"), text_color=("#64748B", "#94A3B8"), anchor="w")
+        t_lbl.pack(side="left")
 
         val_lbl = ctk.CTkLabel(
             card,
@@ -116,15 +118,16 @@ class BillingView(ctk.CTkFrame):
         )
         val_lbl.pack(fill="x", padx=14, pady=(2, 2))
 
-        ctk.CTkLabel(
+        d_lbl = ctk.CTkLabel(
             card,
             text=desc,
             font=ctk.CTkFont(size=10),
             text_color=("#64748B", "#64748B"),
             anchor="w",
-        ).pack(fill="x", padx=14, pady=(0, 10))
+        )
+        d_lbl.pack(fill="x", padx=14, pady=(0, 10))
 
-        return val_lbl
+        return val_lbl, t_lbl, d_lbl
 
     def _build_filter_bar(self) -> None:
         """Search input and status filter controls."""
@@ -212,13 +215,44 @@ class BillingView(ctk.CTkFrame):
         self.load_bills()
 
     def refresh_data(self) -> None:
-        """Reload KPIs and bill records."""
+        """Reload KPIs and bill records from SQLite database with role-based scoping."""
+        self.current_user = get_current_user()
+        sync_unbilled_appointments()
         self.load_kpis()
         self.load_bills()
 
     def load_kpis(self) -> None:
-        """Update 3 metric cards with aggregated totals."""
-        stats = get_billing_summary_statistics()
+        """Update 3 metric cards with role-appropriate financial aggregates."""
+        self.current_user = get_current_user()
+        p_id = None
+        d_id = None
+        role = self.current_user.get("role") if self.current_user else "Hospital Administrator"
+
+        if role == "Patient":
+            p_id = self.current_user.get("linked_patient_id")
+            self.card_invoiced_title.configure(text="MY TOTAL INVOICED")
+            self.card_invoiced_desc.configure(text="Total consultation charges billed")
+            self.card_collected_title.configure(text="MY PAYMENTS SETTLED")
+            self.card_collected_desc.configure(text="Total amount paid to date")
+            self.card_outstanding_title.configure(text="MY BALANCE DUE")
+            self.card_outstanding_desc.configure(text="Pending consultation dues")
+        elif role == "Doctor":
+            d_id = self.current_user.get("linked_doctor_id")
+            self.card_invoiced_title.configure(text="MY ASSIGNED BILLING")
+            self.card_invoiced_desc.configure(text="Billed for your consultations")
+            self.card_collected_title.configure(text="FEES COLLECTED")
+            self.card_collected_desc.configure(text="Collected consultation revenue")
+            self.card_outstanding_title.configure(text="PENDING PATIENT DUES")
+            self.card_outstanding_desc.configure(text="Unpaid dues for your visits")
+        else:
+            self.card_invoiced_title.configure(text="TOTAL INVOICED")
+            self.card_invoiced_desc.configure(text="Consultation fees billed across OPD")
+            self.card_collected_title.configure(text="TOTAL COLLECTED")
+            self.card_collected_desc.configure(text="Settled revenue received across OPD")
+            self.card_outstanding_title.configure(text="OUTSTANDING DUES")
+            self.card_outstanding_desc.configure(text="Unpaid consultation balance")
+
+        stats = get_billing_summary_statistics(patient_id=p_id, doctor_id=d_id, user=self.current_user)
         self.card_invoiced.configure(text=f"Rs. {float(stats.get('total_invoiced', 0)):,.2f}")
         self.card_collected.configure(text=f"Rs. {float(stats.get('total_collected', 0)):,.2f}")
         self.card_outstanding.configure(text=f"Rs. {float(stats.get('total_outstanding', 0)):,.2f}")
