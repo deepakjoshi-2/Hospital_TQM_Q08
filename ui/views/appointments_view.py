@@ -7,7 +7,9 @@ from typing import Optional
 
 from config.constants import APPOINTMENT_STATUSES
 from database.connection import get_db_connection
+from services.auth_service import get_current_user
 from ui.components.appointment_modals import (
+    AppointmentConfirmationModal,
     AppointmentFormModal,
     ConfirmAppointmentActionModal,
 )
@@ -72,6 +74,16 @@ class AppointmentsView(ctk.CTkFrame):
                 if status_filter and status_filter not in ("All", "All Statuses"):
                     sql += " AND a.status = ?"
                     params.append(status_filter)
+
+                # Role scoping: Patients see own appointments; Doctors see assigned consultations
+                user = get_current_user()
+                if user:
+                    if user.get("role") == "Patient" and user.get("linked_patient_id"):
+                        sql += " AND a.patient_id = ?"
+                        params.append(user["linked_patient_id"])
+                    elif user.get("role") == "Doctor" and user.get("linked_doctor_id"):
+                        sql += " AND a.doctor_id = ?"
+                        params.append(user["linked_doctor_id"])
 
                 sql += " ORDER BY a.appointment_date DESC, a.time_slot ASC, a.id DESC;"
                 cursor = conn.execute(sql, tuple(params))
@@ -263,7 +275,7 @@ class AppointmentsView(ctk.CTkFrame):
             ("Priority", 75),
             ("Status", 85),
             ("Rating", 55),
-            ("Actions", 130),
+            ("Actions", 165),
         ]
         for h_text, width in headers:
             lbl = ctk.CTkLabel(
@@ -358,10 +370,10 @@ class AppointmentsView(ctk.CTkFrame):
 
             # 6. Status Chip
             st = a["status"]
-            if st == "Completed":
+            if st in ("Completed", "Confirmed"):
                 c_bg = ("#DCFCE7", "#14532D")
                 c_fg = ("#15803D", "#4ADE80")
-            elif st == "Scheduled":
+            elif st in ("Scheduled", "Pending"):
                 c_bg = ("#FEF3C7", "#78350F")
                 c_fg = ("#B45309", "#FCD34D")
             elif st == "Cancelled":
@@ -395,9 +407,26 @@ class AppointmentsView(ctk.CTkFrame):
                 anchor="w",
             ).pack(side="left", padx=6)
 
-            # 8. Actions Frame (Edit + Del/Cancel)
-            act_frame = ctk.CTkFrame(row, fg_color="transparent", width=130)
+            # 8. Actions Frame (Slip + Edit + Del/Cancel)
+            act_frame = ctk.CTkFrame(row, fg_color="transparent", width=165)
             act_frame.pack(side="left", padx=6)
+
+            # Slip Button
+            slip_btn = ctk.CTkButton(
+                act_frame,
+                text="📋 Slip",
+                font=ctk.CTkFont(size=11, weight="bold"),
+                fg_color=("#F1F5F9", "#1E2D4A"),
+                text_color=("#0284C7", "#38BDF8"),
+                hover_color=("#E2E8F0", "#2B3E63"),
+                border_width=1,
+                border_color=("#CBD5E1", "#33456B"),
+                width=48,
+                height=26,
+                corner_radius=6,
+                command=lambda a_id=a["id"]: self._open_slip_modal(a_id),
+            )
+            slip_btn.pack(side="left", padx=(0, 4))
 
             # Edit Button
             edit_btn = ctk.CTkButton(
@@ -407,12 +436,12 @@ class AppointmentsView(ctk.CTkFrame):
                 fg_color=("#E2E8F0", "#334155"),
                 text_color=("#0F172A", "#F8FAFC"),
                 hover_color=("#CBD5E1", "#475569"),
-                width=56,
+                width=48,
                 height=26,
                 corner_radius=6,
                 command=lambda a_row=a: self._open_edit_modal(a_row),
             )
-            edit_btn.pack(side="left", padx=(0, 6))
+            edit_btn.pack(side="left", padx=(0, 4))
 
             # Delete / Cancel Button
             del_btn = ctk.CTkButton(
@@ -422,12 +451,16 @@ class AppointmentsView(ctk.CTkFrame):
                 fg_color=("#FEE2E2", "#7F1D1D"),
                 text_color=("#DC2626", "#FCA5A5"),
                 hover_color=("#FECACA", "#991B1B"),
-                width=56,
+                width=48,
                 height=26,
                 corner_radius=6,
                 command=lambda a_row=a: self._open_confirm_modal(a_row),
             )
             del_btn.pack(side="left")
+
+    def _open_slip_modal(self, appointment_id: int) -> None:
+        """Open appointment confirmation slip modal."""
+        AppointmentConfirmationModal(self.winfo_toplevel(), appointment_id=appointment_id)
 
     def _open_add_modal(self) -> None:
         """Open modal form to book a new appointment."""

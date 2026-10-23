@@ -10,16 +10,32 @@ from config.constants import (
     STUDENT_SECTION,
 )
 from database.seed_data import seed_database
+from services.auth_service import (
+    ROLE_ADMIN,
+    ROLE_DOCTOR,
+    ROLE_PATIENT,
+    ROLE_STAFF,
+    get_current_user,
+    has_permission,
+    login,
+    logout,
+    set_current_user,
+)
+from services.notification_service import get_unread_notification_count
 from services.profile_service import get_user_profile
+from ui.components.notification_modal import NotificationCenterModal
 from ui.components.scroll_manager import ScrollManager
 from ui.views import (
-    DashboardView,
-    PatientsView,
-    DoctorsView,
     AppointmentsView,
+    BillingView,
+    DashboardView,
+    DoctorsView,
+    LoginView,
+    PatientsView,
     ReportsView,
     SettingsView,
     TQMView,
+    UserManagementView,
 )
 
 
@@ -51,6 +67,10 @@ class HospitalApp(ctk.CTk):
         # Active view tracking
         self.active_view_name = "Dashboard"
         self.nav_buttons: Dict[str, ctk.CTkButton] = {}
+
+        # Default to Administrator session for instant access & backward compatibility
+        if get_current_user() is None:
+            login("admin", "Admin@123")
 
         # Build Main UI Shell
         self._build_sidebar()
@@ -141,32 +161,10 @@ class HospitalApp(ctk.CTk):
         sep = ctk.CTkFrame(self.sidebar, height=1, fg_color=("#CBD5E1", "#1E2D4A"))
         sep.pack(fill="x", padx=16, pady=(12, 16))
 
-        # 2. Navigation Menu Buttons
-        menu_items = [
-            ("Dashboard", "📊  Dashboard"),
-            ("Patients", "👥  Patients Directory"),
-            ("Doctors", "👨‍⚕️  Physicians Roster"),
-            ("Appointments", "📅  Appointments"),
-            ("Reports", "📈  Visual Reports"),
-            ("TQM", "🛡️  TQM Quality Tools"),
-            ("Settings", "⚙️  User Settings"),
-        ]
-
-        for key, label in menu_items:
-            btn = ctk.CTkButton(
-                self.sidebar,
-                text=label,
-                font=ctk.CTkFont(size=13, weight="bold"),
-                anchor="w",
-                height=42,
-                corner_radius=8,
-                fg_color="transparent",
-                text_color=("#475569", "#94A3B8"),
-                hover_color=("#E2E8F0", "#162544"),
-                command=lambda k=key: self.show_view(k),
-            )
-            btn.pack(fill="x", padx=12, pady=3)
-            self.nav_buttons[key] = btn
+        # 2. Navigation Menu Container (Dynamically rendered per role)
+        self.nav_menu_container = ctk.CTkFrame(self.sidebar, fg_color="transparent")
+        self.nav_menu_container.pack(fill="both", expand=True)
+        self._rebuild_sidebar_menu()
 
         # 3. Bottom Controls Area (Theme Toggle, Scaling, DB Status)
         bottom_box = ctk.CTkFrame(self.sidebar, fg_color="transparent")
@@ -214,6 +212,78 @@ class HospitalApp(ctk.CTk):
             anchor="center",
         )
         v_tag.pack(fill="x")
+
+    def _rebuild_sidebar_menu(self) -> None:
+        """Dynamically render navigation buttons based on logged-in user role permissions."""
+        for child in self.nav_menu_container.winfo_children():
+            child.destroy()
+        self.nav_buttons.clear()
+
+        user = get_current_user() or {}
+        role = user.get("role", ROLE_ADMIN)
+
+        if role == ROLE_ADMIN:
+            menu_items = [
+                ("Dashboard", "📊  Dashboard"),
+                ("Patients", "👥  Patients Directory"),
+                ("Doctors", "👨‍⚕️  Physicians Roster"),
+                ("Appointments", "📅  Appointments"),
+                ("Reports", "📈  Visual Reports"),
+                ("Billing", "💳  Billing & Receipts"),
+                ("TQM", "🛡️  TQM Quality Tools"),
+                ("Users", "👥  User Accounts"),
+                ("Settings", "⚙️  User Settings"),
+            ]
+        elif role == ROLE_STAFF:
+            menu_items = [
+                ("Dashboard", "📊  Dashboard"),
+                ("Patients", "👥  Patients Directory"),
+                ("Doctors", "👨‍⚕️  Physicians Roster"),
+                ("Appointments", "📅  Appointments"),
+                ("Billing", "💳  Billing & Receipts"),
+                ("Settings", "⚙️  User Settings"),
+            ]
+        elif role == ROLE_DOCTOR:
+            menu_items = [
+                ("Appointments", "📅  My Appointments"),
+                ("Patients", "👥  Patient Directory"),
+                ("Reports", "📈  Clinical Reports"),
+                ("Billing", "💳  Consultation Billings"),
+                ("Settings", "⚙️  User Settings"),
+            ]
+        elif role == ROLE_PATIENT:
+            menu_items = [
+                ("Appointments", "📅  My Appointments"),
+                ("Doctors", "👨‍⚕️  Physicians Roster"),
+                ("Billing", "💳  My Invoices & Receipts"),
+                ("Settings", "⚙️  My Profile"),
+            ]
+        else:
+            menu_items = [
+                ("Dashboard", "📊  Dashboard"),
+                ("Patients", "👥  Patients Directory"),
+                ("Doctors", "👨‍⚕️  Physicians Roster"),
+                ("Appointments", "📅  Appointments"),
+                ("Reports", "📈  Visual Reports"),
+                ("TQM", "🛡️  TQM Quality Tools"),
+                ("Settings", "⚙️  User Settings"),
+            ]
+
+        for key, label in menu_items:
+            btn = ctk.CTkButton(
+                self.nav_menu_container,
+                text=label,
+                font=ctk.CTkFont(size=13, weight="bold"),
+                anchor="w",
+                height=38,
+                corner_radius=8,
+                fg_color="transparent",
+                text_color=("#475569", "#94A3B8"),
+                hover_color=("#E2E8F0", "#162544"),
+                command=lambda k=key: self.show_view(k),
+            )
+            btn.pack(fill="x", padx=12, pady=2)
+            self.nav_buttons[key] = btn
 
     def _build_content_area(self) -> None:
         """Create main dynamic content area and top header bar."""
@@ -269,7 +339,7 @@ class HospitalApp(ctk.CTk):
             right_actions,
             text="🌙 Theme",
             font=ctk.CTkFont(size=11, weight="bold"),
-            width=90,
+            width=85,
             height=32,
             corner_radius=6,
             fg_color=("#F1F5F9", "#17254A"),
@@ -279,7 +349,24 @@ class HospitalApp(ctk.CTk):
             border_color=("#CBD5E1", "#243666"),
             command=self.toggle_theme,
         )
-        self.theme_quick_btn.pack(side="left", padx=(0, 12))
+        self.theme_quick_btn.pack(side="left", padx=(0, 8))
+
+        # In-App Notification Bell Button
+        self.notif_btn = ctk.CTkButton(
+            right_actions,
+            text="🔔 0",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            width=78,
+            height=32,
+            corner_radius=6,
+            fg_color=("#F1F5F9", "#17254A"),
+            text_color=("#0A192F", "#F8FAFC"),
+            hover_color=("#E2E8F0", "#223862"),
+            border_width=1,
+            border_color=("#CBD5E1", "#243666"),
+            command=self._open_notifications,
+        )
+        self.notif_btn.pack(side="left", padx=(0, 8))
 
         # User Profile Pill (Clickable -> Settings)
         user_chip = ctk.CTkFrame(
@@ -305,6 +392,23 @@ class HospitalApp(ctk.CTk):
         user_chip.bind("<Button-1>", lambda event: self.show_view("Settings"))
         self.user_lbl.bind("<Button-1>", lambda event: self.show_view("Settings"))
 
+        # Sign Out / Switch User Button
+        self.signout_btn = ctk.CTkButton(
+            right_actions,
+            text="🚪 Sign Out",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            width=85,
+            height=32,
+            corner_radius=6,
+            fg_color=("#FEE2E2", "#3B1219"),
+            text_color=("#DC2626", "#F87171"),
+            hover_color=("#FECACA", "#4C1D24"),
+            border_width=1,
+            border_color=("#FCA5A5", "#5C2029"),
+            command=self.show_login_screen,
+        )
+        self.signout_btn.pack(side="left", padx=(8, 0))
+
         # Initialize profile display from SQLite
         self.update_profile_display()
 
@@ -312,14 +416,67 @@ class HospitalApp(ctk.CTk):
         self.current_view_frame: ctk.CTkFrame = None
 
     def update_profile_display(self, profile: Optional[dict] = None) -> None:
-        """Update top bar user badge with current profile info from SQLite."""
-        if not profile:
-            profile = get_user_profile()
-        if profile and hasattr(self, "user_lbl"):
-            role_text = profile.get("role", "Admin")
-            name_text = profile.get("full_name", STUDENT_NAME)
-            self.user_lbl.configure(text=f"👤 {name_text} ({role_text})")
+        """Update top bar user badge with active session or profile."""
+        current_u = get_current_user()
+        if current_u:
+            role_text = current_u.get("role", "Admin")
+            name_text = current_u.get("full_name", STUDENT_NAME)
+        else:
+            profile = profile or get_user_profile()
+            role_text = profile.get("role", "Admin") if profile else "Admin"
+            name_text = profile.get("full_name", STUDENT_NAME) if profile else STUDENT_NAME
 
+        if hasattr(self, "user_lbl"):
+            self.user_lbl.configure(text=f"👤 {name_text} ({role_text})")
+        self.update_notification_badge()
+
+    def update_notification_badge(self) -> None:
+        """Refresh unread notifications count badge on top bar."""
+        if not hasattr(self, "notif_btn"):
+            return
+        user = get_current_user() or {}
+        uid = user.get("id")
+        pid = user.get("linked_patient_id")
+        unread = get_unread_notification_count(user_id=uid, patient_id=pid)
+        if unread > 0:
+            self.notif_btn.configure(
+                text=f"🔔 {unread} New",
+                fg_color=("#E0F2FE", "#0C2E4E"),
+                text_color=("#0284C7", "#38BDF8"),
+                border_color=("#0284C7", "#06B6D4"),
+            )
+        else:
+            self.notif_btn.configure(
+                text="🔔 0",
+                fg_color=("#F1F5F9", "#17254A"),
+                text_color=("#64748B", "#94A3B8"),
+                border_color=("#CBD5E1", "#243666"),
+            )
+
+    def _open_notifications(self) -> None:
+        """Open notification center modal."""
+        user = get_current_user() or {}
+        NotificationCenterModal(
+            self,
+            user_id=user.get("id"),
+            patient_id=user.get("linked_patient_id"),
+            on_update=self.update_notification_badge,
+        )
+
+    def show_login_screen(self) -> None:
+        """Display secure login view to allow role switching."""
+        self.show_view("Login")
+
+    def on_login_success(self, user: dict) -> None:
+        """Callback when user successfully logs in from LoginView."""
+        set_current_user(user)
+        self._rebuild_sidebar_menu()
+        self.update_profile_display()
+        role = user.get("role", ROLE_ADMIN)
+        if role in (ROLE_DOCTOR, ROLE_PATIENT):
+            self.show_view("Appointments")
+        else:
+            self.show_view("Dashboard")
 
     def show_view(self, view_name: str, **kwargs) -> None:
         """Switch active view frame dynamically with highlight updating."""
@@ -367,15 +524,27 @@ class HospitalApp(ctk.CTk):
             self.view_title_lbl.configure(text="Visual Reports & Quality Analytics")
             target_rep = kwargs.get("target_report")
             self.current_view_frame = ReportsView(self.content_container, target_report=target_rep)
+        elif view_name == "Billing":
+            self.view_title_lbl.configure(text="Consultation Billing & Receipts")
+            self.current_view_frame = BillingView(self.content_container)
         elif view_name == "TQM":
             self.view_title_lbl.configure(text="TQM Quality Toolkit (BBAT104)")
             self.current_view_frame = TQMView(self.content_container)
+        elif view_name == "Users":
+            self.view_title_lbl.configure(text="System User Accounts & Roles")
+            self.current_view_frame = UserManagementView(self.content_container)
         elif view_name == "Settings":
             self.view_title_lbl.configure(text="User Profile & Application Settings")
             self.current_view_frame = SettingsView(
                 self.content_container,
                 on_theme_change=self.set_theme_mode,
                 on_profile_updated=self.update_profile_display,
+            )
+        elif view_name == "Login":
+            self.view_title_lbl.configure(text="Role-Based Secure Authentication")
+            self.current_view_frame = LoginView(
+                self.content_container,
+                on_login_success=self.on_login_success,
             )
 
         if self.current_view_frame is not None:

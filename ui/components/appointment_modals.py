@@ -10,6 +10,8 @@ from services.appointment_service import (
     cancel_appointment,
     create_appointment,
     delete_appointment,
+    get_appointment_by_id,
+    get_appointment_confirmation_details,
     get_doctor_dropdown_options,
     get_next_appointment_code,
     get_patient_dropdown_options,
@@ -306,8 +308,12 @@ class AppointmentFormModal(ctk.CTkToplevel):
             pass
 
     def _on_save(self) -> None:
-        """Gather inputs, run validation and conflict checks, and save to SQLite."""
+        """Gather inputs, run validation and conflict checks, and save to SQLite with double-click safeguard."""
         self._clear_error()
+
+        # Double-click safeguard: disable save button while processing
+        self.save_btn.configure(state="disabled", text="Processing...")
+        self.update_idletasks()
 
         patient_choice = self.patient_menu.get().strip()
         doctor_choice = self.doctor_menu.get().strip()
@@ -317,10 +323,12 @@ class AppointmentFormModal(ctk.CTkToplevel):
 
         if not patient_id:
             self._show_error("Please select a valid patient from the dropdown.")
+            self.save_btn.configure(state="normal", text="✓ Save Changes" if self.is_edit else "✓ Confirm & Book Appointment")
             return
 
         if not doctor_id:
             self._show_error("Please select a valid doctor from the dropdown.")
+            self.save_btn.configure(state="normal", text="✓ Save Changes" if self.is_edit else "✓ Confirm & Book Appointment")
             return
 
         rating_choice = self.rating_menu.get()
@@ -344,17 +352,27 @@ class AppointmentFormModal(ctk.CTkToplevel):
             "notes": self.notes_entry.get().strip(),
         }
 
+        new_appointment_id = None
         if self.is_edit:
             success, message = update_appointment(self.appointment_id, data)
         else:
-            success, message, _ = create_appointment(data)
+            success, message, new_appointment_id = create_appointment(data)
 
         if success:
+            master_window = self.master
+            on_succ = self.on_success
             self.destroy()
-            if self.on_success:
-                self.on_success(message)
+            if on_succ:
+                on_succ(message)
+            # Show appointment confirmation dialog for newly booked appointments
+            if not self.is_edit and new_appointment_id:
+                try:
+                    AppointmentConfirmationModal(master_window, appointment_id=new_appointment_id)
+                except Exception as ex:
+                    print(f"Error opening confirmation modal: {ex}")
         else:
             self._show_error(message)
+            self.save_btn.configure(state="normal", text="✓ Save Changes" if self.is_edit else "✓ Confirm & Book Appointment")
 
 
 class ConfirmAppointmentActionModal(ctk.CTkToplevel):
@@ -504,3 +522,214 @@ class ConfirmAppointmentActionModal(ctk.CTkToplevel):
         self.destroy()
         if self.on_success:
             self.on_success(message if success else f"Error: {message}")
+
+
+class AppointmentConfirmationModal(ctk.CTkToplevel):
+    """Post-booking confirmation card displaying appointment reference, consultation fee, and patient instructions."""
+
+    def __init__(self, master, appointment_id: int, on_close: Optional[Callable[[], None]] = None, **kwargs):
+        super().__init__(master, **kwargs)
+        self.appointment_id = appointment_id
+        self.on_close = on_close
+        self.details = get_appointment_confirmation_details(appointment_id) or {}
+
+        code = self.details.get("appointment_code", "APT-XXXX")
+        self.title(f"Appointment Confirmed — {code}")
+        self.resizable(False, False)
+        self.transient(master)
+        self.grab_set()
+
+        self._apply_responsive_geometry(master)
+        self._build_ui()
+
+        self.bind("<Escape>", lambda event: self._close())
+        self.lift()
+        self.focus_force()
+
+    def _apply_responsive_geometry(self, master) -> None:
+        """Position confirmation dialog adaptively on screen."""
+        self.update_idletasks()
+        sw = self.winfo_screenwidth()
+        sh = self.winfo_screenheight()
+        scaling = self._get_window_scaling()
+
+        target_w = min(560, int((sw - 40) / scaling))
+        target_h = min(480, int((sh - 80) / scaling))
+
+        phys_w = int(target_w * scaling)
+        phys_h = int(target_h * scaling)
+        pos_x = max(0, (sw - phys_w) // 2)
+        pos_y = max(10, (sh - phys_h) // 2 - 20)
+
+        self.geometry(f"{target_w}x{target_h}+{pos_x}+{pos_y}")
+
+    def _build_ui(self) -> None:
+        """Construct presentation-ready confirmation receipt card."""
+        pad = ctk.CTkFrame(self, fg_color="transparent")
+        pad.pack(fill="both", expand=True, padx=20, pady=16)
+
+        # 1. Header Banner
+        header = ctk.CTkFrame(pad, fg_color="transparent")
+        header.pack(fill="x", pady=(0, 10))
+
+        title_lbl = ctk.CTkLabel(
+            header,
+            text="✅ Appointment Confirmed & Registered",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            text_color=("#16A34A", "#22C55E"),
+            anchor="w",
+        )
+        title_lbl.pack(fill="x")
+
+        sub_lbl = ctk.CTkLabel(
+            header,
+            text="Official outpatient consultation slip generated with clinical quality tracking.",
+            font=ctk.CTkFont(size=11),
+            text_color=("#64748B", "#94A3B8"),
+            anchor="w",
+        )
+        sub_lbl.pack(fill="x")
+
+        # 2. Key Summary Card
+        card = ctk.CTkFrame(
+            pad,
+            fg_color=("#FFFFFF", "#0F172A"),
+            border_width=1,
+            border_color=("#0284C7", "#06B6D4"),
+            corner_radius=10,
+        )
+        card.pack(fill="x", pady=(0, 12), ipady=8)
+
+        # Reference & Status Pills Header
+        pill_row = ctk.CTkFrame(card, fg_color="transparent")
+        pill_row.pack(fill="x", padx=16, pady=(8, 10))
+
+        code_pill = ctk.CTkLabel(
+            pill_row,
+            text=f"Ref: {self.details.get('appointment_code', '')}",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            fg_color=("#E0F2FE", "#0C2E4E"),
+            text_color=("#0284C7", "#38BDF8"),
+            corner_radius=6,
+            padx=10,
+            pady=4,
+        )
+        code_pill.pack(side="left")
+
+        status_pill = ctk.CTkLabel(
+            pill_row,
+            text=f"● {self.details.get('status', 'Confirmed')}",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            fg_color=("#DCFCE7", "#064E3B"),
+            text_color=("#15803D", "#34D399"),
+            corner_radius=6,
+            padx=10,
+            pady=4,
+        )
+        status_pill.pack(side="left", padx=8)
+
+        fee = float(self.details.get("consultation_fee", 500.0))
+        fee_pill = ctk.CTkLabel(
+            pill_row,
+            text=f"Fee: Rs. {fee:.2f}",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            fg_color=("#FEF3C7", "#451A03"),
+            text_color=("#B45309", "#FBBF24"),
+            corner_radius=6,
+            padx=10,
+            pady=4,
+        )
+        fee_pill.pack(side="right")
+
+        # Detail Rows
+        details_grid = ctk.CTkFrame(card, fg_color="transparent")
+        details_grid.pack(fill="x", padx=16, pady=(0, 6))
+        details_grid.grid_columnconfigure((0, 1), weight=1)
+
+        # Patient Info
+        p_name = self.details.get("patient_name", "")
+        p_code = self.details.get("patient_code", "")
+        p_phone = self.details.get("patient_phone", "")
+        p_box = ctk.CTkFrame(details_grid, fg_color=("#F8FAFC", "#131D33"), corner_radius=6)
+        p_box.grid(row=0, column=0, padx=(0, 6), pady=4, sticky="nsew")
+        ctk.CTkLabel(p_box, text="👤 PATIENT", font=ctk.CTkFont(size=10, weight="bold"), text_color=("#64748B", "#94A3B8"), anchor="w").pack(fill="x", padx=10, pady=(6, 1))
+        ctk.CTkLabel(p_box, text=f"{p_name} ({p_code})", font=ctk.CTkFont(size=12, weight="bold"), text_color=("#0F172A", "#F8FAFC"), anchor="w").pack(fill="x", padx=10)
+        ctk.CTkLabel(p_box, text=f"Phone: {p_phone}", font=ctk.CTkFont(size=10), text_color=("#64748B", "#94A3B8"), anchor="w").pack(fill="x", padx=10, pady=(1, 6))
+
+        # Doctor Info
+        d_name = self.details.get("doctor_name", "")
+        d_spec = self.details.get("specialization", "")
+        d_room = self.details.get("room_number", "")
+        d_box = ctk.CTkFrame(details_grid, fg_color=("#F8FAFC", "#131D33"), corner_radius=6)
+        d_box.grid(row=0, column=1, padx=(6, 0), pady=4, sticky="nsew")
+        ctk.CTkLabel(d_box, text="👨‍⚕️ PHYSICIAN", font=ctk.CTkFont(size=10, weight="bold"), text_color=("#64748B", "#94A3B8"), anchor="w").pack(fill="x", padx=10, pady=(6, 1))
+        ctk.CTkLabel(d_box, text=f"{d_name}", font=ctk.CTkFont(size=12, weight="bold"), text_color=("#0F172A", "#F8FAFC"), anchor="w").pack(fill="x", padx=10)
+        ctk.CTkLabel(d_box, text=f"{d_spec} • OPD Room: {d_room}", font=ctk.CTkFont(size=10), text_color=("#64748B", "#94A3B8"), anchor="w").pack(fill="x", padx=10, pady=(1, 6))
+
+        # Date & Slot Bar
+        time_bar = ctk.CTkFrame(card, fg_color=("#F1F5F9", "#16233E"), corner_radius=6)
+        time_bar.pack(fill="x", padx=16, pady=(4, 8))
+        appt_date = self.details.get("appointment_date", "")
+        time_slot = self.details.get("time_slot", "")
+        reason = self.details.get("reason", "Consultation")
+        ctk.CTkLabel(
+            time_bar,
+            text=f"🗓 Scheduled: {appt_date} at {time_slot}   |   Reason: {reason}",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color=("#0284C7", "#38BDF8"),
+            padx=10,
+            pady=6,
+            anchor="w",
+        ).pack(fill="x")
+
+        # 3. Patient Guidelines Panel
+        inst_card = ctk.CTkFrame(
+            pad,
+            fg_color=("#F8FAFC", "#0C1527"),
+            border_width=1,
+            border_color=("#CBD5E1", "#1E2D4A"),
+            corner_radius=8,
+        )
+        inst_card.pack(fill="x", pady=(0, 14), padx=2)
+
+        ctk.CTkLabel(
+            inst_card,
+            text="📋 Patient Guidelines & Reporting Instructions:",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color=("#0F172A", "#F8FAFC"),
+            anchor="w",
+        ).pack(fill="x", padx=12, pady=(8, 4))
+
+        instructions = self.details.get("instructions", [])
+        for i, text in enumerate(instructions, 1):
+            ctk.CTkLabel(
+                inst_card,
+                text=f" {i}. {text}",
+                font=ctk.CTkFont(size=10),
+                text_color=("#475569", "#94A3B8"),
+                anchor="w",
+                justify="left",
+            ).pack(fill="x", padx=12, pady=1)
+        ctk.CTkLabel(inst_card, text="", height=4).pack()
+
+        # 4. Footer Actions
+        footer = ctk.CTkFrame(pad, fg_color="transparent")
+        footer.pack(fill="x", side="bottom")
+
+        close_btn = ctk.CTkButton(
+            footer,
+            text="✓ Done / Close",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            fg_color=("#0284C7", "#0284C7"),
+            hover_color=("#0369A1", "#0369A1"),
+            height=34,
+            width=120,
+            command=self._close,
+        )
+        close_btn.pack(side="right")
+
+    def _close(self) -> None:
+        """Close dialog and trigger callback."""
+        self.destroy()
+        if self.on_close:
+            self.on_close()
