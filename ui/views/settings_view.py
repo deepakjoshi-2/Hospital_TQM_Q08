@@ -8,6 +8,7 @@ import customtkinter as ctk
 from config.constants import APP_SUBTITLE, STUDENT_NAME, STUDENT_SECTION
 from database.connection import get_db_connection
 from database.seed_data import seed_database
+from services.auth_service import get_current_user
 from services.profile_service import (
     ALLOWED_ROLES,
     ALLOWED_SCALING,
@@ -32,7 +33,9 @@ class SettingsView(ctk.CTkFrame):
         self._notice_timer_id: Optional[str] = None
         self.on_theme_change = on_theme_change
         self.on_profile_updated = on_profile_updated
-        self.profile_data = get_user_profile() or {}
+        self.current_user = get_current_user() or {}
+        target_uname = self.current_user.get("username")
+        self.profile_data = get_user_profile(target_uname) or {}
 
         # Build UI layout
         self._build_header()
@@ -131,9 +134,10 @@ class SettingsView(ctk.CTkFrame):
         p_card.grid(row=0, column=0, padx=(0, 8), pady=(0, 16), sticky="nsew")
 
         # Card Title
+        user_role_label = self.current_user.get("role", "User")
         ctk.CTkLabel(
             p_card,
-            text="Administrator Profile Details",
+            text=f"{user_role_label} Profile Details",
             font=ctk.CTkFont(size=16, weight="bold"),
             text_color=("#0F172A", "#F8FAFC"),
         ).pack(anchor="w", padx=20, pady=(18, 4))
@@ -156,9 +160,10 @@ class SettingsView(ctk.CTkFrame):
             width=110,
             anchor="w",
         ).pack(side="left")
+        uname_display = self.profile_data.get('username') or self.current_user.get('username', 'user')
         u_chip = ctk.CTkLabel(
             u_row,
-            text=f"@{self.profile_data.get('username', 'deepak_admin')}",
+            text=f"@{uname_display}",
             font=ctk.CTkFont(size=11, weight="bold"),
             fg_color=("#E2E8F0", "#26293B"),
             text_color=("#0284C7", "#38BDF8"),
@@ -184,7 +189,7 @@ class SettingsView(ctk.CTkFrame):
             height=32,
             corner_radius=6,
         )
-        self.fullname_entry.insert(0, self.profile_data.get("full_name", STUDENT_NAME))
+        self.fullname_entry.insert(0, self.profile_data.get("full_name", self.current_user.get("full_name", STUDENT_NAME)))
         self.fullname_entry.pack(side="left", fill="x", expand=True)
 
         # 3. Role
@@ -204,11 +209,16 @@ class SettingsView(ctk.CTkFrame):
             height=32,
             corner_radius=6,
         )
-        current_role = self.profile_data.get("role", "Hospital Administrator")
+        current_role = self.profile_data.get("role", self.current_user.get("role", "Staff"))
         if current_role in ALLOWED_ROLES:
             self.role_menu.set(current_role)
         else:
-            self.role_menu.set("Hospital Administrator")
+            self.role_menu.set(current_role)
+
+        # Role change restriction: only Hospital Administrator can reassign system roles
+        if self.current_user.get("role") != "Hospital Administrator":
+            self.role_menu.configure(state="disabled")
+
         self.role_menu.pack(side="left", fill="x", expand=True)
 
         # 4. Email Address
@@ -421,7 +431,10 @@ class SettingsView(ctk.CTkFrame):
         save_pref_btn.pack(side="left")
 
     def _build_maintenance_card(self, parent: ctk.CTkFrame) -> None:
-        """Card summarizing Database Integrity and Keyboard Shortcuts reference."""
+        """Card summarizing Database Integrity and Maintenance tools (Admin only)."""
+        if self.current_user.get("role") != "Hospital Administrator":
+            return  # Hide administrative maintenance tools from non-admin roles
+
         m_card = ctk.CTkFrame(
             parent,
             corner_radius=12,
@@ -483,10 +496,13 @@ class SettingsView(ctk.CTkFrame):
     # =========================================================================
     def _save_profile_details(self) -> None:
         """Validate and commit user profile changes to SQLite."""
-        username = self.profile_data.get("username", "deepak_admin")
+        username = self.profile_data.get("username") or self.current_user.get("username", "user")
+        is_admin_user = self.current_user.get("role") == "Hospital Administrator"
+        assigned_role = self.role_menu.get().strip() if is_admin_user else self.current_user.get("role", "Staff")
+
         updated_data = {
             "full_name": self.fullname_entry.get().strip(),
-            "role": self.role_menu.get().strip(),
+            "role": assigned_role,
             "email": self.email_entry.get().strip(),
             "phone": self.phone_entry.get().strip(),
             "theme_preference": self.theme_menu.get().strip(),
@@ -506,7 +522,10 @@ class SettingsView(ctk.CTkFrame):
 
     def _save_preferences(self) -> None:
         """Validate and commit appearance and system preferences to SQLite."""
-        username = self.profile_data.get("username", "deepak_admin")
+        username = self.profile_data.get("username") or self.current_user.get("username", "user")
+        is_admin_user = self.current_user.get("role") == "Hospital Administrator"
+        assigned_role = self.role_menu.get().strip() if is_admin_user else self.current_user.get("role", "Staff")
+
         theme_val = self.theme_menu.get().strip()
         scaling_val = self.scaling_menu.get().strip()
         view_val = self.view_menu.get().strip()
@@ -515,7 +534,7 @@ class SettingsView(ctk.CTkFrame):
         # Preserve existing profile contact fields
         updated_data = {
             "full_name": self.fullname_entry.get().strip(),
-            "role": self.role_menu.get().strip(),
+            "role": assigned_role,
             "email": self.email_entry.get().strip(),
             "phone": self.phone_entry.get().strip(),
             "theme_preference": theme_val,
@@ -539,15 +558,20 @@ class SettingsView(ctk.CTkFrame):
 
     def _reset_profile_fields(self) -> None:
         """Reset form entry values back to current SQLite database state."""
-        self.profile_data = get_user_profile() or {}
+        uname = self.current_user.get("username")
+        self.profile_data = get_user_profile(uname) or {}
         self.fullname_entry.delete(0, "end")
-        self.fullname_entry.insert(0, self.profile_data.get("full_name", STUDENT_NAME))
+        self.fullname_entry.insert(0, self.profile_data.get("full_name", self.current_user.get("full_name", STUDENT_NAME)))
 
-        current_role = self.profile_data.get("role", "Hospital Administrator")
+        current_role = self.profile_data.get("role", self.current_user.get("role", "Staff"))
         if current_role in ALLOWED_ROLES:
             self.role_menu.set(current_role)
 
         self.email_entry.delete(0, "end")
+        self.email_entry.insert(0, self.profile_data.get("email", self.current_user.get("email", "")))
+
+        self.phone_entry.delete(0, "end")
+        self.phone_entry.insert(0, self.profile_data.get("phone", "+91 98765 43210"))
         self.email_entry.insert(0, self.profile_data.get("email", "deepak.joshi.tqm@hospital.demo"))
 
         self.phone_entry.delete(0, "end")
