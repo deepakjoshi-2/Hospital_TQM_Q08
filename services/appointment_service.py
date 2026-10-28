@@ -2,13 +2,14 @@
 Enforces double-booking prevention, consultation fee preservation at booking,
 status transition state machine, in-app notifications, and confirmation cards.
 """
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from config.constants import (
     APPOINTMENT_STATUSES,
     NOTIF_BOOKING,
     NOTIF_CANCELLATION,
     NOTIF_CONFIRMATION,
+    ROLE_PATIENT,
     STATUS_CANCELLED,
     STATUS_COMPLETED,
     STATUS_CONFIRMED,
@@ -17,6 +18,7 @@ from config.constants import (
     STATUS_SCHEDULED,
 )
 from database.connection import get_db_connection, get_db_cursor
+from services.auth_service import get_current_user
 from services.billing_service import create_bill_for_appointment
 from services.notification_service import create_notification
 from services.validation import validate_appointment_data
@@ -102,6 +104,33 @@ def get_appointment_by_id(appointment_id: int) -> Optional[Dict]:
         )
         row = cursor.fetchone()
         return dict(row) if row else None
+
+
+def get_appointment_by_code(appointment_code: str) -> Optional[Dict]:
+    """Retrieve single appointment record by its unique appointment code (e.g. APT-3048)."""
+    if not appointment_code or not str(appointment_code).strip():
+        return None
+    code_clean = str(appointment_code).strip().upper()
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.execute(
+                """
+                SELECT a.*, 
+                       p.patient_code, p.first_name AS patient_first_name, p.last_name AS patient_last_name, p.phone AS patient_phone,
+                       d.doctor_code, d.first_name AS doctor_first_name, d.last_name AS doctor_last_name, d.specialization, d.room_number,
+                       COALESCE(a.consultation_fee, d.consultation_fee, 500.0) AS effective_fee
+                FROM appointments a
+                JOIN patients p ON a.patient_id = p.id
+                JOIN doctors d ON a.doctor_id = d.id
+                WHERE UPPER(a.appointment_code) = ?;
+                """,
+                (code_clean,),
+            )
+            row = cursor.fetchone()
+            return dict(row) if row else None
+    except Exception as e:
+        print(f"Error fetching appointment by code '{appointment_code}': {e}")
+        return None
 
 
 def get_patient_dropdown_options() -> List[Tuple[int, str]]:
@@ -205,13 +234,38 @@ def check_patient_slot_conflict(
 # 4. CRUD Operations with Fee Freezing and Notification Dispatch
 # ==============================================================================
 
-def create_appointment(data: Dict[str, any]) -> Tuple[bool, str, Optional[int]]:
+def create_appointment(data: Dict[str, any], user: Optional[Dict] = None) -> Tuple[bool, str, Optional[int]]:
     """Validate, verify collision, freeze consultation fee, and insert appointment into SQLite.
     
-    Dispatches booking confirmation notification and creates initial invoice.
+    Enforces role-based booking policies:
+    - Patients can only book appointments for their own authenticated linked profile.
+    - Patient booking requests default strictly to STATUS_PENDING awaiting administrative review.
+    - Double-booking prevention and fee freezing are enforced across all roles.
+    
+    Dispatches booking notification and creates initial invoice.
     Returns:
         (success, message, new_id)
     """
+    # 0. Role-Based Scoping & Initial Status Enforcement
+    cur_user = user if user is not None else get_current_user()
+    if cur_user and cur_user.get("role") == ROLE_PATIENT:
+        linked_pid = cur_user.get("linked_patient_id")
+        if not linked_pid:
+            return False, "Booking error: No patient profile is linked to your account.", None
+
+        # Enforce that patient can only book for themselves
+        req_pid = data.get("patient_id")
+        if req_pid is not None:
+            try:
+                if int(req_pid) != int(linked_pid):
+                    return False, "Access Denied: Patients are only permitted to book appointments for their own profile.", None
+            except (ValueError, TypeError):
+                return False, "Invalid patient identifier provided.", None
+        data["patient_id"] = int(linked_pid)
+
+        # Enforce initial status for patient bookings: strictly Pending staff review
+        data["status"] = STATUS_PENDING
+
     # 1. Validation
     is_valid, error = validate_appointment_data(data, is_edit=False)
     if not is_valid:
@@ -307,37 +361,79 @@ def create_appointment(data: Dict[str, any]) -> Tuple[bool, str, Optional[int]]:
         # 6. Dispatch In-App Patient Notification
         doc_details = get_appointment_by_id(new_id)
         doc_name = f"{doc_details['doctor_first_name']} {doc_details['doctor_last_name']}" if doc_details else "Doctor"
-        notif_msg = (
-            f"Your appointment {appt_code} with Dr. {doc_name} is confirmed for {appt_date} at {time_slot}. "
-            f"Consultation Fee: Rs. {consultation_fee:.2f}."
-        )
+        if status == STATUS_PENDING:
+            notif_title = "Appointment Request Submitted"
+            notif_msg = (
+                f"Your appointment request {appt_code} with Dr. {doc_name} for {appt_date} at {time_slot} "
+                f"has been submitted and is pending staff confirmation. Consultation Fee: Rs. {consultation_fee:.2f}."
+            )
+            notif_type = NOTIF_BOOKING
+            success_msg = f"Appointment request {appt_code} submitted successfully (Pending Staff Review)."
+        else:
+            notif_title = "Appointment Confirmed"
+            notif_msg = (
+                f"Your appointment {appt_code} with Dr. {doc_name} is confirmed for {appt_date} at {time_slot}. "
+                f"Consultation Fee: Rs. {consultation_fee:.2f}."
+            )
+            notif_type = NOTIF_CONFIRMATION if status == STATUS_CONFIRMED else NOTIF_BOOKING
+            success_msg = f"Appointment {appt_code} booked successfully."
+
         create_notification(
             patient_id=patient_id,
-            title="Appointment Confirmed",
+            title=notif_title,
             message=notif_msg,
-            notification_type=NOTIF_CONFIRMATION if status == STATUS_CONFIRMED else NOTIF_BOOKING,
+            notification_type=notif_type,
             appointment_id=new_id,
         )
 
-        return True, f"Appointment {appt_code} booked successfully.", new_id
+        return True, success_msg, new_id
 
     except Exception as e:
         return False, f"Database persistence error: {e}", None
 
 
-def update_appointment(appointment_id: int, data: Dict[str, any]) -> Tuple[bool, str]:
+def update_appointment(appointment_id: Any, data: Dict[str, Any], user: Optional[Dict] = None) -> Tuple[bool, str]:
     """Validate, verify collision and status transition, and update appointment in SQLite.
+    
+    If appointment_id is None or missing, attempts resolution via data['appointment_code'].
     
     Returns:
         (success, message)
     """
-    is_valid, error = validate_appointment_data(data, is_edit=True, current_appointment_id=appointment_id)
-    if not is_valid:
-        return False, error
+    # 1. Resolve appointment_id if None or invalid using appointment_code
+    if (appointment_id is None or str(appointment_id).strip() == "" or str(appointment_id).strip().lower() == "none") and data:
+        code_candidate = data.get("appointment_code")
+        if code_candidate:
+            rec = get_appointment_by_code(code_candidate)
+            if rec:
+                appointment_id = rec["id"]
 
+    if appointment_id is None or str(appointment_id).strip().lower() == "none":
+        return False, "Appointment ID None not found."
+
+    try:
+        appointment_id = int(appointment_id)
+    except (ValueError, TypeError):
+        return False, f"Invalid appointment ID: {appointment_id}"
+
+    # 2. Verify appointment exists before proceeding
     current_record = get_appointment_by_id(appointment_id)
     if not current_record:
         return False, f"Appointment ID {appointment_id} not found."
+
+    # 2b. Role-Based Scoping check for Patient role
+    cur_user = user if user is not None else get_current_user()
+    if cur_user and cur_user.get("role") == ROLE_PATIENT:
+        linked_pid = cur_user.get("linked_patient_id")
+        if not linked_pid or int(current_record["patient_id"]) != int(linked_pid):
+            return False, "Access Denied: Patients cannot modify appointments belonging to other patients."
+        if "status" in data and str(data["status"]).strip() != current_record["status"]:
+            return False, "Access Denied: Patients cannot alter appointment clinical status."
+
+    # 3. Validate appointment data with current_appointment_id to exclude itself from uniqueness
+    is_valid, error = validate_appointment_data(data, is_edit=True, current_appointment_id=appointment_id)
+    if not is_valid:
+        return False, error
 
     old_status = current_record["status"]
     new_status = str(data.get("status", old_status)).strip()

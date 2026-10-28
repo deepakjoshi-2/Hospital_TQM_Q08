@@ -4,6 +4,7 @@ from .appointment_service import (
     check_slot_conflict,
     create_appointment,
     delete_appointment,
+    get_appointment_by_code,
     get_appointment_by_id,
     get_doctor_dropdown_options,
     get_next_appointment_code,

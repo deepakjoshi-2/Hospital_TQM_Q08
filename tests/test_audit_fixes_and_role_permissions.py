@@ -393,6 +393,104 @@ class TestAuditFixesAndRolePermissions(unittest.TestCase):
         pat_tqm.destroy()
         self.root.update()
 
+    # -------------------------------------------------------------------------
+    # 8. Patient Booking UI Controls & Service Scoping (Review 2 Issues 2 & 3)
+    # -------------------------------------------------------------------------
+    def test_11_patient_booking_modal_omits_status_and_patient_dropdowns(self):
+        """Verify AppointmentFormModal omits editable status and patient dropdowns for patient role,
+        while maintaining them for staff and administrative workflows."""
+        # 1. Patient view: no patient dropdown, no status dropdown
+        login("patient_aarav", "Patient@123")
+        cur_u = get_current_user()
+        self.assertEqual(cur_u["role"], "Patient")
+
+        modal_pat = AppointmentFormModal(self.root)
+        self.root.update()
+
+        self.assertTrue(modal_pat.is_patient_user)
+        self.assertIsNone(modal_pat.patient_menu, "Patient selection dropdown must be omitted for patients")
+        self.assertIsNone(modal_pat.status_menu, "Consultation status dropdown must be omitted for patients")
+
+        modal_pat.destroy()
+        self.root.update()
+
+        # 2. Staff view: both patient and status dropdowns are accessible
+        login("staff_reception", "Staff@123")
+        modal_staff = AppointmentFormModal(self.root)
+        self.root.update()
+
+        self.assertFalse(modal_staff.is_patient_user)
+        self.assertIsNotNone(modal_staff.patient_menu, "Staff must retain patient selection dropdown")
+        self.assertIsNotNone(modal_staff.status_menu, "Staff must retain status selection dropdown")
+
+        modal_staff.destroy()
+        self.root.update()
+
+    def test_12_patient_booking_service_enforces_pending_status_and_self_booking(self):
+        """Verify create_appointment strictly locks patient bookings to self and defaults status to Pending."""
+        login("patient_aarav", "Patient@123")
+        pat_u = get_current_user()
+        linked_pid = pat_u["linked_patient_id"]
+
+        # 1. Reject booking for another patient
+        mismatch_payload = {
+            "appointment_code": "APT-P-MISMATCH",
+            "patient_id": linked_pid + 999,
+            "doctor_id": 1,
+            "appointment_date": "2026-11-28",
+            "time_slot": "10:30 AM",
+            "reason": "Unauthorized booking attempt",
+            "priority": "Normal",
+            "status": "Confirmed",
+        }
+        ok_mismatch, msg_mismatch, _ = create_appointment(mismatch_payload, user=pat_u)
+        self.assertFalse(ok_mismatch)
+        self.assertIn("Access Denied", msg_mismatch)
+
+        # 2. Patient booking for self with requested 'Confirmed' status must be overridden to 'Pending'
+        valid_payload = {
+            "appointment_code": "APT-P-SELF-01",
+            "patient_id": linked_pid,
+            "doctor_id": 1,
+            "appointment_date": "2026-11-28",
+            "time_slot": "11:00 AM",
+            "reason": "Valid self appointment request",
+            "priority": "Normal",
+            "status": "Confirmed",  # Patient attempts to claim Confirmed status
+        }
+        ok_valid, msg_valid, appt_id = create_appointment(valid_payload, user=pat_u)
+        self.assertTrue(ok_valid, msg_valid)
+        self.assertIn("Pending Staff Review", msg_valid)
+
+        appt_rec = get_appointment_by_id(appt_id)
+        self.assertEqual(appt_rec["status"], "Pending", "Patient bookings must be forced to Pending status")
+        self.assertEqual(appt_rec["patient_id"], linked_pid)
+
+        # 3. Patient cannot alter status via update_appointment
+        hack_payload = dict(appt_rec)
+        hack_payload["status"] = "Completed"
+        hack_ok, hack_msg = update_appointment(appt_id, hack_payload, user=pat_u)
+        self.assertFalse(hack_ok)
+        self.assertIn("Access Denied", hack_msg)
+
+        # 4. Staff can book with Confirmed status and for any patient
+        login("staff_reception", "Staff@123")
+        staff_u = get_current_user()
+        staff_payload = {
+            "appointment_code": "APT-S-CONF-01",
+            "patient_id": linked_pid,
+            "doctor_id": 1,
+            "appointment_date": "2026-11-28",
+            "time_slot": "02:00 PM",
+            "reason": "Staff-scheduled consultation",
+            "priority": "Normal",
+            "status": "Confirmed",
+        }
+        staff_ok, staff_msg, staff_appt_id = create_appointment(staff_payload, user=staff_u)
+        self.assertTrue(staff_ok, staff_msg)
+        staff_rec = get_appointment_by_id(staff_appt_id)
+        self.assertEqual(staff_rec["status"], "Confirmed", "Staff bookings must respect Confirmed status")
+
 
 if __name__ == "__main__":
     unittest.main()

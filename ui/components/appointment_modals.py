@@ -5,11 +5,19 @@ import customtkinter as ctk
 from datetime import datetime
 from typing import Callable, Dict, Optional
 
-from config.constants import APPOINTMENT_PRIORITIES, APPOINTMENT_STATUSES, TIME_SLOTS
+from config.constants import (
+    APPOINTMENT_PRIORITIES,
+    APPOINTMENT_STATUSES,
+    ROLE_PATIENT,
+    STATUS_PENDING,
+    TIME_SLOTS,
+)
+from services.auth_service import get_current_user
 from services.appointment_service import (
     cancel_appointment,
     create_appointment,
     delete_appointment,
+    get_appointment_by_code,
     get_appointment_by_id,
     get_appointment_confirmation_details,
     get_doctor_dropdown_options,
@@ -31,10 +39,67 @@ class AppointmentFormModal(ctk.CTkToplevel):
         **kwargs,
     ):
         super().__init__(master, **kwargs)
-        self.appointment_data = appointment_data
-        self.is_edit = appointment_data is not None
-        self.appointment_id = appointment_data.get("id") if self.is_edit else None
         self.on_success = on_success
+        self._record_not_found = False
+        self._not_found_message = ""
+
+        # Normalize and resolve appointment input (supports dict, int ID, or string appointment code)
+        raw_data = appointment_data
+        resolved_id = None
+        resolved_code = None
+
+        if isinstance(raw_data, int):
+            resolved_id = raw_data
+            raw_data = {}
+        elif isinstance(raw_data, str):
+            resolved_code = raw_data.strip()
+            raw_data = {}
+        elif isinstance(raw_data, dict):
+            resolved_id = raw_data.get("id") or raw_data.get("appointment_id")
+            resolved_code = raw_data.get("appointment_code")
+
+        # An edit intent is present if an appointment primary key or existing appointment code was provided.
+        # If raw_data only carries default fields (e.g. {'patient_id': 1}) without an appointment key/code,
+        # it is a new booking form, not an edit!
+        has_edit_intent = bool(resolved_id is not None or resolved_code)
+
+        fetched_record = None
+        if resolved_id is not None:
+            fetched_record = get_appointment_by_id(resolved_id)
+            if not fetched_record and resolved_code:
+                fetched_record = get_appointment_by_code(resolved_code)
+        elif resolved_code:
+            fetched_record = get_appointment_by_code(resolved_code)
+
+        if fetched_record:
+            self.is_edit = True
+            self.appointment_id = fetched_record["id"]
+            merged = dict(fetched_record)
+            if isinstance(raw_data, dict):
+                merged.update({k: v for k, v in raw_data.items() if v is not None})
+            self.appointment_data = merged
+        elif has_edit_intent:
+            self.is_edit = True
+            self.appointment_id = resolved_id
+            self.appointment_data = raw_data if isinstance(raw_data, dict) else {}
+            self._record_not_found = True
+            missing_identifier = f"ID {resolved_id}" if resolved_id is not None else f"Code '{resolved_code}'"
+            self._not_found_message = f"Appointment {missing_identifier} not found."
+        else:
+            self.is_edit = False
+            self.appointment_id = None
+            self.appointment_data = raw_data if isinstance(raw_data, dict) else {}
+
+        # Check active authenticated user session for role-specific presentation
+        self.current_user = get_current_user() or {}
+        self.user_role = self.current_user.get("role")
+        self.is_patient_user = (self.user_role == ROLE_PATIENT)
+
+        # Pre-fill patient_id for patient user booking
+        if self.is_patient_user and not self.is_edit:
+            linked_pid = self.current_user.get("linked_patient_id")
+            if linked_pid:
+                self.appointment_data["patient_id"] = int(linked_pid)
 
         # Fetch dynamic patient & doctor options from database
         self.patient_options = get_patient_dropdown_options()
@@ -47,7 +112,13 @@ class AppointmentFormModal(ctk.CTkToplevel):
         self.doctor_label_map = {did: label for did, label in self.doctor_options}
 
         # Window title & properties
-        title_text = f"Edit Appointment: {appointment_data.get('appointment_code', '')}" if self.is_edit else "Book Clinical Appointment"
+        appt_code_str = ""
+        if isinstance(self.appointment_data, dict):
+            appt_code_str = self.appointment_data.get("appointment_code") or ""
+        if not appt_code_str and resolved_code:
+            appt_code_str = resolved_code
+
+        title_text = f"Edit Appointment: {appt_code_str}" if self.is_edit else "Book Clinical Appointment"
         self.title(title_text)
         self.transient(master)
         self.grab_set()
@@ -63,6 +134,12 @@ class AppointmentFormModal(ctk.CTkToplevel):
 
         # 3. SCROLLABLE FORM BODY (Packed in the remaining middle area)
         self._build_scrollable_form()
+
+        # If appointment record could not be found, display notice and disable save
+        if self._record_not_found:
+            self._show_error(self._not_found_message)
+            if hasattr(self, "save_btn") and self.save_btn:
+                self.save_btn.configure(state="disabled")
 
         # Bind mouse wheel and keyboard shortcuts
         self._setup_event_bindings()
@@ -213,16 +290,59 @@ class AppointmentFormModal(ctk.CTkToplevel):
         self.priority_menu.set(d.get("priority") or "Normal")
         self.priority_menu.grid(row=1, column=1, padx=8, pady=(0, 6), sticky="ew")
 
-        # Row 2: Patient Selection (Dropdown dynamically loaded from SQLite)
-        ctk.CTkLabel(self.form_scroll, text="Select Patient *", font=ctk.CTkFont(size=11, weight="bold"), text_color=("#475569", "#94A3B8"), anchor="w").grid(row=2, column=0, columnspan=2, padx=8, pady=(4, 1), sticky="w")
+        # Row 2: Patient Selection (Locked to Authenticated Patient for Patient Role)
+        if self.is_patient_user and not self.is_edit:
+            ctk.CTkLabel(
+                self.form_scroll,
+                text="Patient Profile (Authenticated Account) *",
+                font=ctk.CTkFont(size=11, weight="bold"),
+                text_color=("#475569", "#94A3B8"),
+                anchor="w",
+            ).grid(row=2, column=0, columnspan=2, padx=8, pady=(4, 1), sticky="w")
 
-        patient_labels = list(self.patient_id_map.keys()) if self.patient_id_map else ["No Patients in DB"]
-        self.patient_menu = ctk.CTkOptionMenu(self.form_scroll, values=patient_labels, height=32)
-        if d.get("patient_id") and d["patient_id"] in self.patient_label_map:
-            self.patient_menu.set(self.patient_label_map[d["patient_id"]])
-        elif patient_labels:
-            self.patient_menu.set(patient_labels[0])
-        self.patient_menu.grid(row=3, column=0, columnspan=2, padx=8, pady=(0, 6), sticky="ew")
+            linked_pid = self.current_user.get("linked_patient_id")
+            pat_name = self.current_user.get("full_name") or ""
+            if not pat_name:
+                p_first = self.current_user.get("pat_first_name") or ""
+                p_last = self.current_user.get("pat_last_name") or ""
+                pat_name = f"{p_first} {p_last}".strip()
+            if not pat_name and linked_pid in self.patient_label_map:
+                pat_name = self.patient_label_map[linked_pid]
+            if not pat_name:
+                pat_name = f"Patient #{linked_pid}" if linked_pid else "Unlinked Profile"
+
+            p_code = self.current_user.get("patient_code") or (f"PAT-{linked_pid}" if linked_pid else "NO-ID")
+
+            pat_card = ctk.CTkFrame(
+                self.form_scroll,
+                fg_color=("#F1F5F9", "#1E293B"),
+                corner_radius=6,
+                border_width=1,
+                border_color=("#CBD5E1", "#334155"),
+                height=36,
+            )
+            pat_card.grid(row=3, column=0, columnspan=2, padx=8, pady=(0, 6), sticky="ew")
+
+            ctk.CTkLabel(
+                pat_card,
+                text=f"👤 {pat_name} ({p_code})  —  [Authenticated: Self-Booking Only]",
+                font=ctk.CTkFont(size=11, weight="bold"),
+                text_color=("#0284C7", "#38BDF8"),
+                anchor="w",
+                padx=12,
+                pady=6,
+            ).pack(fill="x")
+            self.patient_menu = None
+        else:
+            ctk.CTkLabel(self.form_scroll, text="Select Patient *", font=ctk.CTkFont(size=11, weight="bold"), text_color=("#475569", "#94A3B8"), anchor="w").grid(row=2, column=0, columnspan=2, padx=8, pady=(4, 1), sticky="w")
+
+            patient_labels = list(self.patient_id_map.keys()) if self.patient_id_map else ["No Patients in DB"]
+            self.patient_menu = ctk.CTkOptionMenu(self.form_scroll, values=patient_labels, height=32)
+            if d.get("patient_id") and d["patient_id"] in self.patient_label_map:
+                self.patient_menu.set(self.patient_label_map[d["patient_id"]])
+            elif patient_labels:
+                self.patient_menu.set(patient_labels[0])
+            self.patient_menu.grid(row=3, column=0, columnspan=2, padx=8, pady=(0, 6), sticky="ew")
 
         # Row 4: Doctor Selection (Dropdown dynamically loaded from SQLite)
         ctk.CTkLabel(self.form_scroll, text="Select Doctor *", font=ctk.CTkFont(size=11, weight="bold"), text_color=("#475569", "#94A3B8"), anchor="w").grid(row=4, column=0, columnspan=2, padx=8, pady=(4, 1), sticky="w")
@@ -248,12 +368,42 @@ class AppointmentFormModal(ctk.CTkToplevel):
         self.slot_menu.set(d.get("time_slot") or "10:00 AM")
         self.slot_menu.grid(row=7, column=1, padx=8, pady=(0, 6), sticky="ew")
 
-        # Row 8: Status & Info (CSAT rating removed from booking form per TQM Q08 rules)
-        ctk.CTkLabel(self.form_scroll, text="Consultation Status *", font=ctk.CTkFont(size=11, weight="bold"), text_color=("#475569", "#94A3B8"), anchor="w").grid(row=8, column=0, padx=8, pady=(4, 1), sticky="w")
-        
-        self.status_menu = ctk.CTkOptionMenu(self.form_scroll, values=APPOINTMENT_STATUSES, height=32)
-        self.status_menu.set(d.get("status") or ("Confirmed" if not self.is_edit else "Scheduled"))
-        self.status_menu.grid(row=9, column=0, padx=8, pady=(0, 6), sticky="ew")
+        # Row 8: Status & Info (Non-editable for patient bookings; CSAT post-visit only)
+        if self.is_patient_user and not self.is_edit:
+            ctk.CTkLabel(
+                self.form_scroll,
+                text="Consultation Status",
+                font=ctk.CTkFont(size=11, weight="bold"),
+                text_color=("#475569", "#94A3B8"),
+                anchor="w",
+            ).grid(row=8, column=0, padx=8, pady=(4, 1), sticky="w")
+
+            status_card = ctk.CTkFrame(
+                self.form_scroll,
+                fg_color=("#FEF3C7", "#3D2A00"),
+                corner_radius=6,
+                border_width=1,
+                border_color=("#F59E0B", "#B45309"),
+                height=32,
+            )
+            status_card.grid(row=9, column=0, padx=8, pady=(0, 6), sticky="ew")
+
+            ctk.CTkLabel(
+                status_card,
+                text="⏳ Pending Staff Review (Default)",
+                font=ctk.CTkFont(size=11, weight="bold"),
+                text_color=("#92400E", "#FCD34D"),
+                anchor="w",
+                padx=10,
+                pady=6,
+            ).pack(fill="x")
+            self.status_menu = None
+        else:
+            ctk.CTkLabel(self.form_scroll, text="Consultation Status *", font=ctk.CTkFont(size=11, weight="bold"), text_color=("#475569", "#94A3B8"), anchor="w").grid(row=8, column=0, padx=8, pady=(4, 1), sticky="w")
+            
+            self.status_menu = ctk.CTkOptionMenu(self.form_scroll, values=APPOINTMENT_STATUSES, height=32)
+            self.status_menu.set(d.get("status") or ("Confirmed" if not self.is_edit else "Scheduled"))
+            self.status_menu.grid(row=9, column=0, padx=8, pady=(0, 6), sticky="ew")
 
         if self.is_edit and d.get("status") == "Completed":
             ctk.CTkLabel(self.form_scroll, text="Recorded CSAT Rating", font=ctk.CTkFont(size=11, weight="bold"), text_color=("#475569", "#94A3B8"), anchor="w").grid(row=8, column=1, padx=8, pady=(4, 1), sticky="w")
@@ -302,9 +452,12 @@ class AppointmentFormModal(ctk.CTkToplevel):
 
     def _bind_mousewheel_recursive(self, widget) -> None:
         """Recursively attach mouse wheel scrolling handler."""
-        widget.bind("<MouseWheel>", self._on_mousewheel, add="+")
-        widget.bind("<Button-4>", self._on_mousewheel, add="+")
-        widget.bind("<Button-5>", self._on_mousewheel, add="+")
+        try:
+            widget.bind("<MouseWheel>", self._on_mousewheel, add="+")
+            widget.bind("<Button-4>", self._on_mousewheel, add="+")
+            widget.bind("<Button-5>", self._on_mousewheel, add="+")
+        except (NotImplementedError, AttributeError, Exception):
+            pass
         for child in widget.winfo_children():
             self._bind_mousewheel_recursive(child)
 
@@ -330,16 +483,24 @@ class AppointmentFormModal(ctk.CTkToplevel):
         self.save_btn.configure(state="disabled", text="Processing...")
         self.update_idletasks()
 
-        patient_choice = self.patient_menu.get().strip()
-        doctor_choice = self.doctor_menu.get().strip()
+        if self.is_patient_user and not self.is_edit:
+            patient_id = self.current_user.get("linked_patient_id")
+            if not patient_id:
+                self._show_error("Booking error: No patient profile is linked to your account.")
+                self.save_btn.configure(state="normal", text="✓ Confirm & Book Appointment")
+                return
+            status = STATUS_PENDING
+        else:
+            patient_choice = self.patient_menu.get().strip() if self.patient_menu else ""
+            patient_id = self.patient_id_map.get(patient_choice)
+            if not patient_id:
+                self._show_error("Please select a valid patient from the dropdown.")
+                self.save_btn.configure(state="normal", text="✓ Save Changes" if self.is_edit else "✓ Confirm & Book Appointment")
+                return
+            status = self.status_menu.get().strip() if self.status_menu else "Confirmed"
 
-        patient_id = self.patient_id_map.get(patient_choice)
+        doctor_choice = self.doctor_menu.get().strip() if hasattr(self, "doctor_menu") and self.doctor_menu else ""
         doctor_id = self.doctor_id_map.get(doctor_choice)
-
-        if not patient_id:
-            self._show_error("Please select a valid patient from the dropdown.")
-            self.save_btn.configure(state="normal", text="✓ Save Changes" if self.is_edit else "✓ Confirm & Book Appointment")
-            return
 
         if not doctor_id:
             self._show_error("Please select a valid doctor from the dropdown.")
@@ -357,22 +518,35 @@ class AppointmentFormModal(ctk.CTkToplevel):
 
         data = {
             "appointment_code": self.code_entry.get().strip(),
-            "patient_id": patient_id,
-            "doctor_id": doctor_id,
+            "patient_id": int(patient_id),
+            "doctor_id": int(doctor_id),
             "appointment_date": self.date_entry.get().strip(),
             "time_slot": self.slot_menu.get().strip(),
             "reason": self.reason_entry.get().strip(),
             "priority": self.priority_menu.get().strip(),
-            "status": self.status_menu.get().strip(),
+            "status": status,
             "satisfaction_rating": rating_val,
             "notes": self.notes_entry.get().strip(),
         }
 
         new_appointment_id = None
         if self.is_edit:
-            success, message = update_appointment(self.appointment_id, data)
+            # Retain or resolve internal primary key throughout the edit workflow
+            if self.appointment_id is None:
+                code_to_try = self.code_entry.get().strip()
+                if code_to_try:
+                    rec = get_appointment_by_code(code_to_try)
+                    if rec:
+                        self.appointment_id = rec["id"]
+
+            if self.appointment_id is None:
+                self._show_error("Appointment ID None not found.")
+                self.save_btn.configure(state="normal", text="✓ Save Changes" if self.is_edit else "✓ Confirm & Book Appointment")
+                return
+
+            success, message = update_appointment(self.appointment_id, data, user=self.current_user)
         else:
-            success, message, new_appointment_id = create_appointment(data)
+            success, message, new_appointment_id = create_appointment(data, user=self.current_user)
 
         if success:
             master_window = self.master
@@ -589,18 +763,24 @@ class AppointmentConfirmationModal(ctk.CTkToplevel):
         header = ctk.CTkFrame(pad, fg_color="transparent")
         header.pack(fill="x", pady=(0, 10))
 
+        app_status = str(self.details.get("status", "Confirmed")).strip()
+        is_pending = (app_status == "Pending")
+        header_title = "⏳ Appointment Request Submitted" if is_pending else "✅ Appointment Confirmed & Registered"
+        header_sub = "Your consultation request has been submitted and is pending staff review." if is_pending else "Official outpatient consultation slip generated with clinical quality tracking."
+        title_color = ("#D97706", "#FBBF24") if is_pending else ("#16A34A", "#22C55E")
+
         title_lbl = ctk.CTkLabel(
             header,
-            text="✅ Appointment Confirmed & Registered",
+            text=header_title,
             font=ctk.CTkFont(size=16, weight="bold"),
-            text_color=("#16A34A", "#22C55E"),
+            text_color=title_color,
             anchor="w",
         )
         title_lbl.pack(fill="x")
 
         sub_lbl = ctk.CTkLabel(
             header,
-            text="Official outpatient consultation slip generated with clinical quality tracking.",
+            text=header_sub,
             font=ctk.CTkFont(size=11),
             text_color=("#64748B", "#94A3B8"),
             anchor="w",
@@ -635,10 +815,10 @@ class AppointmentConfirmationModal(ctk.CTkToplevel):
 
         status_pill = ctk.CTkLabel(
             pill_row,
-            text=f"● {self.details.get('status', 'Confirmed')}",
+            text=f"● {app_status}",
             font=ctk.CTkFont(size=11, weight="bold"),
-            fg_color=("#DCFCE7", "#064E3B"),
-            text_color=("#15803D", "#34D399"),
+            fg_color=("#FEF3C7", "#451A03") if is_pending else ("#DCFCE7", "#064E3B"),
+            text_color=("#B45309", "#FBBF24") if is_pending else ("#15803D", "#34D399"),
             corner_radius=6,
             padx=10,
             pady=4,

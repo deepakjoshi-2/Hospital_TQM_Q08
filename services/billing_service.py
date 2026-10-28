@@ -247,21 +247,22 @@ def get_billing_summary_statistics(
             sql = """
                 SELECT 
                     COUNT(*) as total_bills,
-                    COALESCE(SUM(total_amount), 0.0) as total_invoiced,
-                    COALESCE(SUM(amount_paid), 0.0) as total_collected,
-                    COALESCE(SUM(outstanding_balance), 0.0) as total_outstanding,
-                    SUM(CASE WHEN payment_status = 'Paid' THEN 1 ELSE 0 END) as paid_count,
-                    SUM(CASE WHEN payment_status = 'Partially Paid' THEN 1 ELSE 0 END) as partial_count,
-                    SUM(CASE WHEN payment_status = 'Unpaid' THEN 1 ELSE 0 END) as unpaid_count
-                FROM bills
+                    COALESCE(SUM(b.total_amount), 0.0) as total_invoiced,
+                    COALESCE(SUM(b.amount_paid), 0.0) as total_collected,
+                    COALESCE(SUM(CASE WHEN b.payment_status NOT IN ('Paid', 'Refunded') AND COALESCE(a.status, '') != 'Cancelled' THEN b.outstanding_balance ELSE 0.0 END), 0.0) as total_outstanding,
+                    SUM(CASE WHEN b.payment_status = 'Paid' THEN 1 ELSE 0 END) as paid_count,
+                    SUM(CASE WHEN b.payment_status = 'Partially Paid' THEN 1 ELSE 0 END) as partial_count,
+                    SUM(CASE WHEN b.payment_status = 'Unpaid' THEN 1 ELSE 0 END) as unpaid_count
+                FROM bills b
+                LEFT JOIN appointments a ON b.appointment_id = a.id
                 WHERE 1=1
             """
             params = []
             if target_patient_id:
-                sql += " AND patient_id = ?"
+                sql += " AND b.patient_id = ?"
                 params.append(target_patient_id)
             elif target_doctor_id:
-                sql += " AND doctor_id = ?"
+                sql += " AND b.doctor_id = ?"
                 params.append(target_doctor_id)
 
             cursor = conn.execute(sql, tuple(params))

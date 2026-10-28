@@ -6,6 +6,7 @@ from services.appointment_service import (
     check_slot_conflict,
     create_appointment,
     delete_appointment,
+    get_appointment_by_code,
     get_appointment_by_id,
     get_doctor_dropdown_options,
     get_next_appointment_code,
@@ -23,11 +24,26 @@ class TestAppointmentCRUD(unittest.TestCase):
         """Record baseline state of appointments table."""
         with get_db_connection() as conn:
             cls.baseline_count = conn.execute("SELECT COUNT(*) as c FROM appointments;").fetchone()["c"]
+            notif_row = conn.execute("SELECT MAX(id) as m FROM notifications;").fetchone()
+            cls.baseline_max_notif = notif_row["m"] or 0
+            bill_row = conn.execute("SELECT MAX(id) as m FROM bills;").fetchone()
+            cls.baseline_max_bill = bill_row["m"] or 0
             # Fetch valid patient and doctor IDs for testing
             p_row = conn.execute("SELECT id FROM patients LIMIT 1;").fetchone()
             d_row = conn.execute("SELECT id FROM doctors LIMIT 1;").fetchone()
             cls.valid_patient_id = p_row["id"]
             cls.valid_doctor_id = d_row["id"]
+
+    @classmethod
+    def tearDownClass(cls):
+        """Clean up any notifications or bills generated during test execution."""
+        from database.connection import get_db_cursor
+        try:
+            with get_db_cursor() as (conn, cursor):
+                cursor.execute("DELETE FROM notifications WHERE id > ?;", (cls.baseline_max_notif,))
+                cursor.execute("DELETE FROM bills WHERE id > ?;", (cls.baseline_max_bill,))
+        except Exception:
+            pass
 
     def test_01_validation_rejects_invalid_inputs(self):
         """Verify validation engine catches missing or malformed appointment fields."""
@@ -253,8 +269,164 @@ class TestAppointmentCRUD(unittest.TestCase):
         self.assertIsInstance(doc_options[0], tuple)
         self.assertEqual(len(doc_options[0]), 2)
 
-    def test_05_baseline_appointments_integrity_preserved(self):
-        """Ensure all 42 original demo appointments remain untouched and intact."""
+    def test_05_get_appointment_by_code(self):
+        """Verify get_appointment_by_code resolves existing codes and handles missing codes."""
+        # Query known appointment
+        rec = get_appointment_by_code("APT-3001")
+        self.assertIsNotNone(rec)
+        self.assertEqual(rec["appointment_code"], "APT-3001")
+        self.assertEqual(rec["id"], 1)
+        self.assertEqual(f"{rec['patient_first_name']} {rec['patient_last_name']}", "Aarav Verma")
+        self.assertIn("doctor_first_name", rec)
+
+        # Case insensitive check
+        rec_lower = get_appointment_by_code("apt-3001")
+        self.assertIsNotNone(rec_lower)
+        self.assertEqual(rec_lower["id"], 1)
+
+        # Missing or invalid codes
+        self.assertIsNone(get_appointment_by_code("APT-NONEXISTENT-9999"))
+        self.assertIsNone(get_appointment_by_code(""))
+        self.assertIsNone(get_appointment_by_code(None))
+
+    def test_06_update_appointment_resolves_code_when_id_is_none(self):
+        """Verify update_appointment resolves appointment_id using appointment_code when ID is None."""
+        test_code = "APT-TEST-3048"
+        test_date = "2028-11-20"
+        test_slot = "10:00 AM"
+
+        test_data = {
+            "appointment_code": test_code,
+            "patient_id": self.valid_patient_id,
+            "doctor_id": self.valid_doctor_id,
+            "appointment_date": test_date,
+            "time_slot": test_slot,
+            "reason": "Initial consultation before resolution test",
+            "priority": "Normal",
+            "status": "Scheduled",
+        }
+        ok, msg, appt_id = create_appointment(test_data)
+        self.assertTrue(ok, f"Creation failed: {msg}")
+
+        try:
+            # Call update_appointment with appointment_id=None
+            update_payload = test_data.copy()
+            update_payload["reason"] = "Updated reason resolved via appointment_code"
+            update_payload["priority"] = "Urgent"
+
+            upd_ok, upd_msg = update_appointment(None, update_payload)
+            self.assertTrue(upd_ok, f"Update with None ID should resolve code: {upd_msg}")
+
+            # Verify persisted record
+            persisted = get_appointment_by_id(appt_id)
+            self.assertEqual(persisted["reason"], "Updated reason resolved via appointment_code")
+            self.assertEqual(persisted["priority"], "Urgent")
+            self.assertEqual(persisted["id"], appt_id)
+
+            # Test updating with None and an invalid appointment_code
+            bad_payload = {"appointment_code": "APT-DOES-NOT-EXIST", "patient_id": self.valid_patient_id, "doctor_id": self.valid_doctor_id}
+            bad_ok, bad_msg = update_appointment(None, bad_payload)
+            self.assertFalse(bad_ok)
+            self.assertIn("not found", bad_msg.lower())
+        finally:
+            delete_appointment(appt_id)
+
+    def test_07_appointment_form_modal_resolves_code_and_retains_primary_key(self):
+        """Verify AppointmentFormModal resolves appointment_code and retains actual integer primary key."""
+        from ui.components.appointment_modals import AppointmentFormModal
+        import customtkinter as ctk
+
+        test_code = "APT-TEST-3049"
+        test_data = {
+            "appointment_code": test_code,
+            "patient_id": self.valid_patient_id,
+            "doctor_id": self.valid_doctor_id,
+            "appointment_date": "2028-11-21",
+            "time_slot": "11:30 AM",
+            "reason": "Modal resolution verification test",
+            "priority": "Normal",
+            "status": "Scheduled",
+        }
+        ok, msg, appt_id = create_appointment(test_data)
+        self.assertTrue(ok, f"Creation failed: {msg}")
+
+        root = ctk.CTk()
+        root.withdraw()
+        try:
+            # 1. Open modal passing appointment_data with appointment_code and id=None
+            modal = AppointmentFormModal(root, appointment_data={"appointment_code": test_code, "id": None})
+            self.assertTrue(modal.is_edit)
+            self.assertEqual(modal.appointment_id, appt_id, "Must resolve actual database primary key from appointment_code")
+            self.assertFalse(modal._record_not_found)
+            self.assertEqual(modal.code_entry.get(), test_code)
+            modal.destroy()
+
+            # 2. Open modal for a new booking (patient role passing default patient_id only)
+            new_booking_modal = AppointmentFormModal(root, appointment_data={"patient_id": self.valid_patient_id})
+            self.assertFalse(new_booking_modal.is_edit, "Default patient_id must not trigger edit mode")
+            self.assertIsNone(new_booking_modal.appointment_id)
+            new_booking_modal.destroy()
+
+            # 3. Open modal for nonexistent appointment code
+            missing_modal = AppointmentFormModal(root, appointment_data={"appointment_code": "APT-NONEXISTENT-777"})
+            self.assertTrue(missing_modal.is_edit)
+            self.assertTrue(missing_modal._record_not_found)
+            missing_modal.destroy()
+        finally:
+            try:
+                root.destroy()
+            except Exception:
+                pass
+            delete_appointment(appt_id)
+
+    def test_08_update_appointment_preserves_other_records_and_double_booking_guards(self):
+        """Verify updating an appointment does not alter other records and enforces double booking safeguards."""
+        # Fetch baseline record for APT-3001
+        baseline_3001 = get_appointment_by_code("APT-3001")
+        self.assertIsNotNone(baseline_3001)
+
+        test_code = "APT-TEST-3050"
+        test_data = {
+            "appointment_code": test_code,
+            "patient_id": self.valid_patient_id,
+            "doctor_id": self.valid_doctor_id,
+            "appointment_date": "2028-11-22",
+            "time_slot": "02:00 PM",
+            "reason": "Safeguard check",
+            "priority": "Normal",
+            "status": "Scheduled",
+        }
+        ok, msg, appt_id = create_appointment(test_data)
+        self.assertTrue(ok, f"Creation failed: {msg}")
+
+        try:
+            # Attempt to update to doctor and slot that conflicts with APT-3001
+            conflict_payload = {
+                "appointment_code": test_code,
+                "patient_id": self.valid_patient_id,
+                "doctor_id": baseline_3001["doctor_id"],
+                "appointment_date": baseline_3001["appointment_date"],
+                "time_slot": baseline_3001["time_slot"],
+                "reason": "Malicious conflict attempt",
+                "priority": "Normal",
+                "status": "Scheduled",
+            }
+            # Only test conflict if baseline_3001 is not Cancelled
+            if baseline_3001["status"] != "Cancelled":
+                conf_ok, conf_msg = update_appointment(appt_id, conflict_payload)
+                self.assertFalse(conf_ok, "Double booking same doctor in same slot during edit must be blocked!")
+                self.assertIn("Double-Booking Blocked", conf_msg)
+
+            # Confirm APT-3001 was untouched
+            after_3001 = get_appointment_by_code("APT-3001")
+            self.assertEqual(after_3001["reason"], baseline_3001["reason"])
+            self.assertEqual(after_3001["status"], baseline_3001["status"])
+            self.assertEqual(after_3001["doctor_id"], baseline_3001["doctor_id"])
+        finally:
+            delete_appointment(appt_id)
+
+    def test_10_baseline_appointments_integrity_preserved(self):
+        """Ensure all original demo appointments remain untouched and intact."""
         with get_db_connection() as conn:
             current_count = conn.execute("SELECT COUNT(*) as c FROM appointments;").fetchone()["c"]
             self.assertEqual(

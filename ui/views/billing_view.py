@@ -272,8 +272,8 @@ class BillingView(ctk.CTkFrame):
             self.card_invoiced_desc.configure(text="Total consultation charges billed")
             self.card_collected_title.configure(text="MY PAYMENTS SETTLED")
             self.card_collected_desc.configure(text="Total amount paid to date")
-            self.card_outstanding_title.configure(text="MY BALANCE DUE")
-            self.card_outstanding_desc.configure(text="Pending consultation dues")
+            self.card_outstanding_title.configure(text="MY BALANCE DUE (ALL INVOICES)")
+            self.card_outstanding_desc.configure(text="Total pending balance across all your invoices")
         elif role == "Doctor":
             d_id = self.current_user.get("linked_doctor_id")
             self.card_invoiced_title.configure(text="MY ASSIGNED BILLING")

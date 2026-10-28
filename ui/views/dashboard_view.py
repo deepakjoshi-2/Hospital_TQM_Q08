@@ -68,7 +68,10 @@ class DashboardView(ctk.CTkFrame):
                 # 5. Today's appointments list
                 cursor = conn.execute(
                     """
-                    SELECT a.appointment_code, 
+                    SELECT a.id,
+                           a.appointment_code, 
+                           a.patient_id,
+                           a.doctor_id,
                            p.first_name || ' ' || p.last_name AS patient_name,
                            d.first_name || ' ' || d.last_name AS doctor_name,
                            d.specialization,

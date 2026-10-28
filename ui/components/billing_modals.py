@@ -284,22 +284,34 @@ class PatientPaymentModal(ctk.CTkToplevel):
         self.transient(master)
         self.grab_set()
 
+        # Responsive geometry tailored to 720p / 1080p and high-DPI scaling
         self._apply_responsive_geometry(master)
-        self._build_ui()
 
-        self.bind("<Escape>", lambda event: self._do_cancel())
+        # 1. FIXED HEADER (Packed TOP)
+        self._build_header()
+
+        # 2. FIXED FOOTER (Packed BOTTOM FIRST so it is permanently visible)
+        self._build_fixed_footer()
+
+        # 3. SCROLLABLE MIDDLE CONTAINER (Packed in remaining central space)
+        self._build_scrollable_body()
+
+        # Bind event shortcuts & recursive mouse wheel scrolling
+        self._setup_event_bindings()
+
         self.lift()
         self.focus_force()
 
     def _apply_responsive_geometry(self, master) -> None:
-        """Center modal dialog adaptively."""
+        """Calculate dimensions so modal fits safely inside screen height with taskbar margins."""
         self.update_idletasks()
         sw = self.winfo_screenwidth()
         sh = self.winfo_screenheight()
         scaling = self._get_window_scaling()
 
-        target_w = min(560, int((sw - 40) / scaling))
-        target_h = min(600, int((sh - 60) / scaling))
+        max_unscaled_h = int((sh - 90) / scaling)
+        target_h = min(580, max_unscaled_h)
+        target_w = min(580, int((sw - 40) / scaling))
 
         phys_w = int(target_w * scaling)
         phys_h = int(target_h * scaling)
@@ -307,42 +319,119 @@ class PatientPaymentModal(ctk.CTkToplevel):
         pos_y = max(10, (sh - phys_h) // 2 - 20)
 
         self.geometry(f"{target_w}x{target_h}+{pos_x}+{pos_y}")
+        self.minsize(min(480, sw - 40), min(360, sh - 60))
 
-    def _build_ui(self) -> None:
-        """Construct Patient Online Checkout form with gateway details and simulation triggers."""
-        pad = ctk.CTkFrame(self, fg_color="transparent")
-        pad.pack(fill="both", expand=True, padx=22, pady=16)
+    def _build_header(self) -> None:
+        """Fixed header frame with checkout title, subtitle, and demo badge."""
+        self.header_frame = ctk.CTkFrame(self, fg_color="transparent")
+        self.header_frame.pack(side="top", fill="x", padx=20, pady=(12, 4))
 
-        # 1. Header
-        hdr = ctk.CTkFrame(pad, fg_color="transparent")
-        hdr.pack(fill="x", pady=(0, 8))
+        top_row = ctk.CTkFrame(self.header_frame, fg_color="transparent")
+        top_row.pack(fill="x")
 
         ctk.CTkLabel(
-            hdr,
+            top_row,
             text="💳 Patient Portal — Online Payment Checkout",
             font=ctk.CTkFont(size=16, weight="bold"),
             text_color=("#0284C7", "#06B6D4"),
             anchor="w",
-        ).pack(fill="x")
+        ).pack(side="left")
+
+        demo_badge = ctk.CTkLabel(
+            top_row,
+            text="⚡ DEMO GATEWAY",
+            font=ctk.CTkFont(size=10, weight="bold"),
+            fg_color=("#FEF3C7", "#3D2A00"),
+            text_color=("#B45309", "#FBBF24"),
+            corner_radius=6,
+            padx=8,
+            pady=2,
+        )
+        demo_badge.pack(side="right")
 
         ctk.CTkLabel(
-            hdr,
-            text=f"Settle your consultation dues for {self.bill['bill_number']} via secure digital gateway.",
+            self.header_frame,
+            text=f"Academic Payment Simulation — Settle consultation dues for {self.bill['bill_number']}. (No real money is charged).",
             font=ctk.CTkFont(size=11),
             text_color=("#64748B", "#94A3B8"),
             anchor="w",
-        ).pack(fill="x")
+        ).pack(fill="x", pady=(2, 0))
 
-        # 2. Prominent Demo Gateway Banner (Academic Mode Requirement)
+    def _build_fixed_footer(self) -> None:
+        """Fixed footer bar permanently anchored at the bottom with all simulation action buttons."""
+        self.footer_frame = ctk.CTkFrame(
+            self,
+            fg_color=("#F1F5F9", "#1E202E"),
+            border_width=1,
+            border_color=("#CBD5E1", "#334155"),
+            corner_radius=8,
+            height=58,
+        )
+        self.footer_frame.pack(side="bottom", fill="x", padx=16, pady=(4, 12))
+        self.footer_frame.pack_propagate(False)
+
+        # Cancel button on left
+        self.cancel_btn = ctk.CTkButton(
+            self.footer_frame,
+            text="⊘ Cancel",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            fg_color=("#E2E8F0", "#334155"),
+            text_color=("#0F172A", "#F8FAFC"),
+            hover_color=("#CBD5E1", "#475569"),
+            width=80,
+            height=34,
+            command=self._do_cancel,
+        )
+        self.cancel_btn.pack(side="left", padx=(12, 6), pady=12)
+
+        # Simulate Bank Failure button
+        self.fail_btn = ctk.CTkButton(
+            self.footer_frame,
+            text="✕ Simulate Bank Failure",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            fg_color=("#FEE2E2", "#450A0A"),
+            text_color=("#B91C1C", "#F87171"),
+            hover_color=("#FCA5A5", "#7F1D1D"),
+            border_width=1,
+            border_color=("#FCA5A5", "#7F1D1D"),
+            height=34,
+            command=lambda: self._do_pay("FAILURE"),
+        )
+        self.fail_btn.pack(side="left", padx=6, pady=12)
+
+        # Simulate Success button (Primary action)
+        self.success_btn = ctk.CTkButton(
+            self.footer_frame,
+            text="✓ Pay Now (Simulate Success)",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            fg_color=("#16A34A", "#15803D"),
+            hover_color=("#15803D", "#166534"),
+            height=34,
+            command=lambda: self._do_pay("SUCCESS"),
+        )
+        self.success_btn.pack(side="right", padx=(6, 12), pady=12)
+
+    def _build_scrollable_body(self) -> None:
+        """Middle scrollable container housing bill summary, amount selection, payment method, and walkthrough."""
+        self.scroll_body = ctk.CTkScrollableFrame(
+            self,
+            fg_color=("white", "#181A26"),
+            border_width=1,
+            border_color=("#E2E8F0", "#334155"),
+            corner_radius=8,
+        )
+        self.scroll_body.pack(side="top", fill="both", expand=True, padx=16, pady=(2, 4))
+
+        # 1. Prominent Demo Gateway Banner (Academic Mode Requirement)
         gateway_info = get_payment_gateway_info()
         demo_banner = ctk.CTkFrame(
-            pad,
+            self.scroll_body,
             fg_color=("#FEF3C7", "#3B2206"),
             border_width=1,
             border_color=("#F59E0B", "#B45309"),
             corner_radius=8,
         )
-        demo_banner.pack(fill="x", pady=(0, 10))
+        demo_banner.pack(fill="x", padx=8, pady=(8, 10))
 
         b_pad = ctk.CTkFrame(demo_banner, fg_color="transparent")
         b_pad.pack(fill="x", padx=12, pady=8)
@@ -365,19 +454,19 @@ class PatientPaymentModal(ctk.CTkToplevel):
             anchor="w",
         ).pack(fill="x", pady=(2, 0))
 
-        # 3. Invoice Summary Card
+        # 2. Invoice Summary Card
         card = ctk.CTkFrame(
-            pad,
-            fg_color=("#FFFFFF", "#0F172A"),
+            self.scroll_body,
+            fg_color=("#F8FAFC", "#0F172A"),
             border_width=1,
             border_color=("#CBD5E1", "#1E2D4A"),
             corner_radius=8,
         )
-        card.pack(fill="x", pady=(0, 10), ipady=4)
+        card.pack(fill="x", padx=8, pady=(0, 10), ipady=4)
 
         c_row1 = ctk.CTkFrame(card, fg_color="transparent")
-        c_row1.pack(fill="x", padx=12, pady=2)
-        ctk.CTkLabel(c_row1, text=f"Invoice #{self.bill['bill_number']}", font=ctk.CTkFont(size=12, weight="bold"), text_color=("#0F172A", "#F8FAFC")).pack(side="left")
+        c_row1.pack(fill="x", padx=12, pady=(8, 2))
+        ctk.CTkLabel(c_row1, text=f"Selected Invoice: #{self.bill['bill_number']}", font=ctk.CTkFont(size=12, weight="bold"), text_color=("#0F172A", "#F8FAFC")).pack(side="left")
         ctk.CTkLabel(c_row1, text=f"Consultation: {self.bill['appointment_code']}", font=ctk.CTkFont(size=11), text_color=("#0284C7", "#38BDF8")).pack(side="right")
 
         c_row2 = ctk.CTkFrame(card, fg_color="transparent")
@@ -389,27 +478,40 @@ class PatientPaymentModal(ctk.CTkToplevel):
 
         # Balance highlight
         bal_frame = ctk.CTkFrame(card, fg_color=("#F1F5F9", "#16233E"), corner_radius=6)
-        bal_frame.pack(fill="x", padx=12, pady=(4, 4))
+        bal_frame.pack(fill="x", padx=12, pady=(6, 8))
         self.outstanding_val = float(self.bill['outstanding_balance'])
         total_val = float(self.bill['total_amount'])
         paid_val = float(self.bill['amount_paid'])
 
         ctk.CTkLabel(
             bal_frame,
-            text=f"Total: Rs. {total_val:.2f}   |   Paid: Rs. {paid_val:.2f}   |   Current Balance Due: Rs. {self.outstanding_val:.2f}",
+            text=f"Selected Invoice Total: Rs. {total_val:.2f}   |   Paid: Rs. {paid_val:.2f}   |   Invoice Balance Due: Rs. {self.outstanding_val:.2f}",
             font=ctk.CTkFont(size=11, weight="bold"),
             text_color=("#B45309", "#FBBF24"),
             padx=8,
             pady=4,
-        ).pack()
+        ).pack(pady=(4, 2))
 
-        # 4. Payment Amount Selection (Full vs Partial)
-        amt_box = ctk.CTkFrame(pad, fg_color="transparent")
-        amt_box.pack(fill="x", pady=(0, 8))
+        # Patient Account Context (clarifying total across all invoices vs this selected invoice)
+        from services.billing_service import get_billing_summary_statistics
+        stats = get_billing_summary_statistics(patient_id=self.bill["patient_id"], user=self.current_user)
+        combined_due = float(stats.get("total_outstanding", 0.0))
+        ctk.CTkLabel(
+            bal_frame,
+            text=f"ℹ️ Total Outstanding Across All Patient Invoices: Rs. {combined_due:.2f}",
+            font=ctk.CTkFont(size=10),
+            text_color=("#64748B", "#94A3B8"),
+            padx=8,
+            pady=2,
+        ).pack(pady=(0, 4))
+
+        # 3. Payment Amount Selection (Full vs Partial)
+        amt_box = ctk.CTkFrame(self.scroll_body, fg_color="transparent")
+        amt_box.pack(fill="x", padx=8, pady=(0, 8))
 
         ctk.CTkLabel(
             amt_box,
-            text="Payment Amount:",
+            text="Payment Amount for Selected Invoice:",
             font=ctk.CTkFont(size=11, weight="bold"),
             text_color=("#475569", "#94A3B8"),
             anchor="w",
@@ -429,9 +531,10 @@ class PatientPaymentModal(ctk.CTkToplevel):
         )
         self.pay_full_btn.pack(side="left", padx=(0, 8))
 
+        half_amt = round(self.outstanding_val / 2, 2)
         self.pay_half_btn = ctk.CTkButton(
             amt_row,
-            text=f"🔘 Pay 50% (Rs. {self.outstanding_val/2:.2f})",
+            text=f"🔘 Pay 50% (Rs. {half_amt:.2f})",
             font=ctk.CTkFont(size=11),
             height=30,
             fg_color=("#F1F5F9", "#1E2D4A"),
@@ -447,13 +550,13 @@ class PatientPaymentModal(ctk.CTkToplevel):
         self.amount_entry.insert(0, f"{self.outstanding_val:.2f}")
         self.amount_entry.pack(side="left")
 
-        # 5. Payment Method Tabs & Fields
-        method_box = ctk.CTkFrame(pad, fg_color="transparent")
-        method_box.pack(fill="x", pady=(0, 8))
+        # 4. Payment Method Tabs & Fields
+        method_box = ctk.CTkFrame(self.scroll_body, fg_color="transparent")
+        method_box.pack(fill="x", padx=8, pady=(0, 8))
 
         ctk.CTkLabel(
             method_box,
-            text="Select Payment Method:",
+            text="Select Simulated Payment Method:",
             font=ctk.CTkFont(size=11, weight="bold"),
             text_color=("#475569", "#94A3B8"),
             anchor="w",
@@ -470,99 +573,148 @@ class PatientPaymentModal(ctk.CTkToplevel):
 
         # Dynamic demo details frame
         self.details_frame = ctk.CTkFrame(
-            pad,
+            self.scroll_body,
             fg_color=("#F8FAFC", "#0C152B"),
             border_width=1,
             border_color=("#E2E8F0", "#1E2D4A"),
             corner_radius=8,
         )
-        self.details_frame.pack(fill="x", pady=(0, 8))
+        self.details_frame.pack(fill="x", padx=8, pady=(0, 8))
         self.details_lbl = ctk.CTkLabel(
             self.details_frame,
-            text="📱 Demo UPI: patient@okhdfcbank (Auto-verified via Instant UPI Switch)",
-            font=ctk.CTkFont(size=10),
+            text="📱 Virtual UPI ID: patient@okhdfcbank\n• Instant virtual UPI switch simulation with automated callback verification.",
+            font=ctk.CTkFont(size=11),
             text_color=("#0284C7", "#38BDF8"),
-            padx=10,
-            pady=8,
+            padx=12,
+            pady=10,
+            justify="left",
             anchor="w",
         )
         self.details_lbl.pack(fill="x")
 
+        # 5. Academic Demonstration Walkthrough / Procedure Card
+        proc_frame = ctk.CTkFrame(
+            self.scroll_body,
+            fg_color=("#F1F5F9", "#111827"),
+            border_width=1,
+            border_color=("#CBD5E1", "#1F2937"),
+            corner_radius=8,
+        )
+        proc_frame.pack(fill="x", padx=8, pady=(0, 8))
+
+        proc_hdr = ctk.CTkLabel(
+            proc_frame,
+            text="📋 Academic Demo Procedure (Classroom Walkthrough)",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color=("#334155", "#94A3B8"),
+            anchor="w",
+        )
+        proc_hdr.pack(fill="x", padx=10, pady=(6, 2))
+
+        steps_text = (
+            "1. Review Bill: Verify invoice balance due and total patient account balance.\n"
+            "2. Select Method: Choose UPI, Card, or Net Banking test credentials.\n"
+            "3. Test Simulation:\n"
+            "   • Click 'Pay Now' to simulate successful clearance & instant receipt.\n"
+            "   • Click 'Simulate Bank Failure' to verify balance protection on decline.\n"
+            "4. Idempotency: Unique session token guards against double-billing."
+        )
+        proc_lbl = ctk.CTkLabel(
+            proc_frame,
+            text=steps_text,
+            font=ctk.CTkFont(size=10),
+            text_color=("#475569", "#94A3B8"),
+            justify="left",
+            anchor="w",
+        )
+        proc_lbl.pack(fill="x", padx=10, pady=(0, 6))
+
         # Error / Status Banner
         self.err_lbl = ctk.CTkLabel(
-            pad,
+            self.scroll_body,
             text="",
-            font=ctk.CTkFont(size=11),
+            font=ctk.CTkFont(size=11, weight="bold"),
             text_color="#EF4444",
             wraplength=480,
             anchor="w",
         )
-        self.err_lbl.pack(fill="x", pady=(0, 6))
+        self.err_lbl.pack(fill="x", padx=8, pady=(0, 6))
 
-        # 6. Action Buttons: Clearly separated Success, Failure, and Cancel options
-        act_frame = ctk.CTkFrame(pad, fg_color="transparent")
-        act_frame.pack(fill="x", side="bottom")
+    def _setup_event_bindings(self) -> None:
+        """Bind mouse wheel scrolling and keyboard shortcuts."""
+        self.bind("<Escape>", lambda event: self._do_cancel())
+        self._bind_mousewheel_recursive(self.scroll_body)
 
-        # Cancel button
-        self.cancel_btn = ctk.CTkButton(
-            act_frame,
-            text="⊘ Cancel",
-            font=ctk.CTkFont(size=11, weight="bold"),
-            fg_color=("#E2E8F0", "#334155"),
-            text_color=("#0F172A", "#F8FAFC"),
-            hover_color=("#CBD5E1", "#475569"),
-            width=80,
-            height=34,
-            command=self._do_cancel,
-        )
-        self.cancel_btn.pack(side="left")
+    def _bind_mousewheel_recursive(self, widget) -> None:
+        """Recursively attach mouse wheel scrolling handler."""
+        try:
+            widget.bind("<MouseWheel>", self._on_mousewheel, add="+")
+            widget.bind("<Button-4>", self._on_mousewheel, add="+")
+            widget.bind("<Button-5>", self._on_mousewheel, add="+")
+        except (NotImplementedError, AttributeError, Exception):
+            pass
+        for child in widget.winfo_children():
+            self._bind_mousewheel_recursive(child)
 
-        # Simulate Failure button
-        self.fail_btn = ctk.CTkButton(
-            act_frame,
-            text="✕ Simulate Bank Failure",
-            font=ctk.CTkFont(size=11, weight="bold"),
-            fg_color=("#FEE2E2", "#450A0A"),
-            text_color=("#B91C1C", "#F87171"),
-            hover_color=("#FCA5A5", "#7F1D1D"),
-            border_width=1,
-            border_color=("#FCA5A5", "#7F1D1D"),
-            height=34,
-            command=lambda: self._do_pay("FAILURE"),
-        )
-        self.fail_btn.pack(side="left", padx=8)
-
-        # Simulate Success button (Primary action)
-        self.success_btn = ctk.CTkButton(
-            act_frame,
-            text="✓ Pay Now (Simulate Success)",
-            font=ctk.CTkFont(size=12, weight="bold"),
-            fg_color=("#16A34A", "#15803D"),
-            hover_color=("#15803D", "#166534"),
-            height=34,
-            command=lambda: self._do_pay("SUCCESS"),
-        )
-        self.success_btn.pack(side="right")
+    def _on_mousewheel(self, event) -> None:
+        """Handle mouse wheel scrolling on the checkout form with responsive increments."""
+        try:
+            if hasattr(self, "scroll_body") and self.scroll_body._parent_canvas:
+                delta = getattr(event, "delta", 0)
+                num = getattr(event, "num", 0)
+                step = int(abs(delta) / 120.0 * 40) if delta else 40
+                if num == 5 or delta < 0:
+                    self.scroll_body._parent_canvas.yview("scroll", max(1, step), "units")
+                elif num == 4 or delta > 0:
+                    self.scroll_body._parent_canvas.yview("scroll", -max(1, step), "units")
+        except Exception:
+            pass
 
     def _set_full_amount(self) -> None:
-        """Pre-fill remaining full balance."""
+        """Pre-fill remaining full balance for selected invoice and update visual selection."""
         self.amount_entry.delete(0, "end")
         self.amount_entry.insert(0, f"{self.outstanding_val:.2f}")
+        self.pay_full_btn.configure(
+            fg_color=("#0284C7", "#0284C7"),
+            text_color="white",
+            font=ctk.CTkFont(size=11, weight="bold"),
+        )
+        self.pay_half_btn.configure(
+            fg_color=("#F1F5F9", "#1E2D4A"),
+            text_color=("#0F172A", "#F8FAFC"),
+            font=ctk.CTkFont(size=11),
+        )
 
     def _set_half_amount(self) -> None:
-        """Pre-fill 50% partial payment."""
+        """Pre-fill 50% partial payment for selected invoice and update visual selection."""
         half = round(self.outstanding_val / 2, 2)
         self.amount_entry.delete(0, "end")
         self.amount_entry.insert(0, f"{half:.2f}")
+        self.pay_half_btn.configure(
+            fg_color=("#0284C7", "#0284C7"),
+            text_color="white",
+            font=ctk.CTkFont(size=11, weight="bold"),
+        )
+        self.pay_full_btn.configure(
+            fg_color=("#F1F5F9", "#1E2D4A"),
+            text_color=("#0F172A", "#F8FAFC"),
+            font=ctk.CTkFont(size=11),
+        )
 
     def _on_method_changed(self, value: str) -> None:
         """Update demo payment method simulation instructions."""
         if value == PAYMENT_METHOD_UPI:
-            self.details_lbl.configure(text="📱 Demo UPI: patient@okhdfcbank (Instant virtual payment simulation)")
+            self.details_lbl.configure(
+                text="📱 Virtual UPI ID: patient@okhdfcbank\n• Instant virtual UPI switch simulation with automated callback verification."
+            )
         elif value == PAYMENT_METHOD_CARD:
-            self.details_lbl.configure(text="💳 Demo Card: 4111-XXXX-XXXX-1111 | Exp: 12/28 | 3D-Secure Test OTP")
+            self.details_lbl.configure(
+                text="💳 Test Card: 4111-XXXX-XXXX-1111 | Exp: 12/28 | CVV: 123\n• 3D-Secure Test OTP: 123456 (Simulated Visa/Mastercard processing)."
+            )
         elif value == PAYMENT_METHOD_NET_BANKING:
-            self.details_lbl.configure(text="🏦 Demo Net Banking: HDFC Bank / State Bank of India portal redirection")
+            self.details_lbl.configure(
+                text="🏦 Simulated Bank: HDFC Bank / SBI / ICICI NetBanking Portal\n• Instant secure redirection and digital signature verification."
+            )
 
     def _do_cancel(self) -> None:
         """User cancels checkout without completing payment."""

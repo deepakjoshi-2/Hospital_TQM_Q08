@@ -63,6 +63,7 @@ from services.payment_service import (
     is_demo_mode,
     process_patient_online_payment,
 )
+from ui.components.billing_modals import PatientPaymentModal
 from ui.views.billing_view import BillingView
 
 
@@ -566,6 +567,160 @@ class TestPatientPaymentAndBillingControls(unittest.TestCase):
             view.destroy()
 
         container.destroy()
+
+    # --------------------------------------------------------------------------
+    # 14. Balance Calculations, Multi-Invoice Integrity & Modal Clarity
+    # --------------------------------------------------------------------------
+    def test_14_patient_balance_calculations_and_checkout_modal_clarity(self):
+        """Verify patient combined balance matches eligible invoices, partial payments update correctly,
+        failed payments do not reduce dues, and checkout modal clarifies invoice vs account balance."""
+        # Baseline balance for patient 1
+        initial_stats = get_billing_summary_statistics(patient_id=self.p1_id)
+        base_outstanding = float(initial_stats.get("total_outstanding", 0.0))
+
+        # Create two distinct appointments & bills for patient 1
+        bill_a_id = self._create_test_bill(self.p1_id, self.d1_id)
+        bill_b_id = self._create_test_bill(self.p1_id, self.d1_id)
+
+        bill_a = get_bill_by_id(bill_a_id)
+        bill_b = get_bill_by_id(bill_b_id)
+        bill_a_tot = float(bill_a["total_amount"])
+        bill_b_tot = float(bill_b["total_amount"])
+
+        # 1. Verify patient-wide outstanding balance matches eligible invoice balances
+        stats_after_add = get_billing_summary_statistics(patient_id=self.p1_id)
+        expected_combined = base_outstanding + bill_a_tot + bill_b_tot
+        self.assertAlmostEqual(float(stats_after_add["total_outstanding"]), expected_combined, places=2)
+
+        # 2. Selected invoice balance matches valid payments: 50% partial payment
+        half_a = round(bill_a_tot / 2, 2)
+        rem_a = round(bill_a_tot - half_a, 2)
+
+        pay_ok, pay_msg, receipt = process_patient_online_payment(
+            bill_id=bill_a_id,
+            amount=half_a,
+            simulated_outcome="SUCCESS",
+            idempotency_key="IDEMP-BAL-TEST-001",
+            user=self.pat_user,
+        )
+        self.assertTrue(pay_ok)
+        self.assertIsNotNone(receipt)
+
+        # Re-fetch Bill A
+        bill_a_after = get_bill_by_id(bill_a_id)
+        self.assertEqual(float(bill_a_after["amount_paid"]), half_a)
+        self.assertEqual(float(bill_a_after["outstanding_balance"]), rem_a)
+        self.assertEqual(bill_a_after["payment_status"], "Partially Paid")
+
+        # Patient-wide outstanding must reflect the exact payment reduction
+        stats_after_part = get_billing_summary_statistics(patient_id=self.p1_id)
+        self.assertAlmostEqual(float(stats_after_part["total_outstanding"]), expected_combined - half_a, places=2)
+
+        # 3. Failed simulated payments must NOT reduce the balance
+        fail_ok, fail_msg, _ = process_patient_online_payment(
+            bill_id=bill_a_id,
+            amount=rem_a,
+            simulated_outcome="FAILURE",
+            idempotency_key="IDEMP-BAL-FAIL-001",
+            user=self.pat_user,
+        )
+        self.assertFalse(fail_ok)
+        bill_a_fail = get_bill_by_id(bill_a_id)
+        self.assertEqual(float(bill_a_fail["outstanding_balance"]), rem_a, "Failed payment must not alter balance")
+        stats_after_fail = get_billing_summary_statistics(patient_id=self.p1_id)
+        self.assertAlmostEqual(float(stats_after_fail["total_outstanding"]), expected_combined - half_a, places=2)
+
+        # 4. Fully settled invoices do not contribute to outstanding balance
+        full_ok, full_msg, _ = process_patient_online_payment(
+            bill_id=bill_a_id,
+            amount=rem_a,
+            simulated_outcome="SUCCESS",
+            idempotency_key="IDEMP-BAL-FULL-001",
+            user=self.pat_user,
+        )
+        self.assertTrue(full_ok)
+        bill_a_settled = get_bill_by_id(bill_a_id)
+        self.assertEqual(float(bill_a_settled["outstanding_balance"]), 0.0)
+        self.assertEqual(bill_a_settled["payment_status"], "Paid")
+
+        # Now only Bill B + base_outstanding remains
+        stats_after_settle = get_billing_summary_statistics(patient_id=self.p1_id)
+        self.assertAlmostEqual(float(stats_after_settle["total_outstanding"]), base_outstanding + bill_b_tot, places=2)
+
+        # 5. Invoices for cancelled consultations are excluded from total_outstanding
+        bill_b_record = get_bill_by_id(bill_b_id)
+        with get_db_connection(self.test_db_path) as conn:
+            conn.execute("UPDATE appointments SET status = 'Cancelled' WHERE id = ?;", (bill_b_record["appointment_id"],))
+            conn.commit()
+        stats_after_cancel = get_billing_summary_statistics(patient_id=self.p1_id)
+        self.assertAlmostEqual(float(stats_after_cancel["total_outstanding"]), base_outstanding, places=2)
+
+        # Re-enable appointment status for UI test
+        with get_db_connection(self.test_db_path) as conn:
+            conn.execute("UPDATE appointments SET status = 'Confirmed' WHERE id = ?;", (bill_b_record["appointment_id"],))
+            conn.commit()
+
+        # 6. Refunded bills are also excluded from total_outstanding
+        with get_db_connection(self.test_db_path) as conn:
+            conn.execute("UPDATE bills SET payment_status = 'Refunded' WHERE id = ?;", (bill_b_id,))
+            conn.commit()
+        stats_after_refund = get_billing_summary_statistics(patient_id=self.p1_id)
+        self.assertAlmostEqual(float(stats_after_refund["total_outstanding"]), base_outstanding, places=2)
+
+        # Restore bill B to Unpaid for checkout modal test
+        with get_db_connection(self.test_db_path) as conn:
+            conn.execute("UPDATE bills SET payment_status = 'Unpaid' WHERE id = ?;", (bill_b_id,))
+            conn.commit()
+
+        # 7. Verify PatientPaymentModal UI labels, Pay Full & Pay 50% amounts
+        set_current_user(self.pat_user)
+        modal = PatientPaymentModal(self.root, bill_id=bill_b_id)
+        self.assertEqual(modal.outstanding_val, bill_b_tot)
+        self.assertFalse(modal.resizable()[0])
+
+        # Test Pay 50%
+        modal._set_half_amount()
+        self.assertEqual(modal.amount_entry.get().strip(), f"{round(bill_b_tot / 2, 2):.2f}")
+
+        # Test Pay Full
+        modal._set_full_amount()
+        self.assertEqual(modal.amount_entry.get().strip(), f"{bill_b_tot:.2f}")
+
+        modal.destroy()
+
+    # --------------------------------------------------------------------------
+    # 15. Checkout Modal Fixed Footer & Scrollable Architecture (Review 2 Issue 1)
+    # --------------------------------------------------------------------------
+    def test_15_checkout_modal_fixed_footer_and_scrollable_architecture(self):
+        """Verify PatientPaymentModal implements fixed header, fixed footer with action buttons,
+        scrollable middle body, and dynamic payment method switching without clipping."""
+        bill_id = self._create_test_bill(self.p1_id, self.d1_id)
+        set_current_user(self.pat_user)
+
+        modal = PatientPaymentModal(self.root, bill_id=bill_id)
+
+        # 1. Fixed Header & Footer Frames exist
+        self.assertTrue(hasattr(modal, "header_frame"))
+        self.assertTrue(hasattr(modal, "footer_frame"))
+        self.assertTrue(hasattr(modal, "scroll_body"))
+        self.assertIsInstance(modal.scroll_body, ctk.CTkScrollableFrame)
+
+        # 2. Action buttons are strictly anchored in footer frame (never clipped)
+        self.assertEqual(modal.cancel_btn.master, modal.footer_frame)
+        self.assertEqual(modal.fail_btn.master, modal.footer_frame)
+        self.assertEqual(modal.success_btn.master, modal.footer_frame)
+
+        # 3. Method switching dynamically updates gateway simulation details
+        modal._on_method_changed(PAYMENT_METHOD_UPI)
+        self.assertIn("Virtual UPI ID", modal.details_lbl.cget("text"))
+
+        modal._on_method_changed(PAYMENT_METHOD_CARD)
+        self.assertIn("Test Card", modal.details_lbl.cget("text"))
+
+        modal._on_method_changed(PAYMENT_METHOD_NET_BANKING)
+        self.assertIn("Simulated Bank", modal.details_lbl.cget("text"))
+
+        modal.destroy()
 
 
 if __name__ == "__main__":
