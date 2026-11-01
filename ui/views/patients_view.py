@@ -5,6 +5,7 @@ import customtkinter as ctk
 from typing import Optional
 
 from database.connection import get_db_connection
+from services.auth_service import get_current_user
 from ui.components.patient_modals import ConfirmPatientActionModal, PatientFormModal
 
 
@@ -23,45 +24,97 @@ class PatientsView(ctk.CTkFrame):
         self._build_table()
 
     def _load_patients(self, query: str = "") -> list:
-        """Fetch patients from SQLite database, optionally filtering by query."""
+        """Fetch patients from SQLite database, scoped by role."""
         results = []
         try:
+            user = get_current_user() or {}
+            role = user.get("role", "Administrator")
+            doc_id = user.get("linked_doctor_id")
+            pat_id = user.get("linked_patient_id")
+
             with get_db_connection() as conn:
-                if query.strip():
-                    term = f"%{query.strip()}%"
+                if role == "Doctor" and doc_id:
+                    if query.strip():
+                        term = f"%{query.strip()}%"
+                        cursor = conn.execute(
+                            """
+                            SELECT DISTINCT p.id, p.patient_code, p.first_name, p.last_name, p.dob, p.gender, p.phone, p.email, p.blood_group, p.emergency_contact, p.address, p.status
+                            FROM patients p
+                            JOIN appointments a ON a.patient_id = p.id
+                            WHERE a.doctor_id = ?
+                              AND (p.patient_code LIKE ? OR p.first_name LIKE ? OR p.last_name LIKE ? OR p.phone LIKE ? OR p.email LIKE ? OR p.blood_group LIKE ?)
+                            ORDER BY p.id DESC;
+                            """,
+                            (doc_id, term, term, term, term, term, term),
+                        )
+                    else:
+                        cursor = conn.execute(
+                            """
+                            SELECT DISTINCT p.id, p.patient_code, p.first_name, p.last_name, p.dob, p.gender, p.phone, p.email, p.blood_group, p.emergency_contact, p.address, p.status
+                            FROM patients p
+                            JOIN appointments a ON a.patient_id = p.id
+                            WHERE a.doctor_id = ?
+                            ORDER BY p.id DESC;
+                            """,
+                            (doc_id,),
+                        )
+                elif role == "Patient" and pat_id:
                     cursor = conn.execute(
                         """
                         SELECT id, patient_code, first_name, last_name, dob, gender, phone, email, blood_group, emergency_contact, address, status
                         FROM patients
-                        WHERE patient_code LIKE ? OR first_name LIKE ? OR last_name LIKE ? OR phone LIKE ? OR email LIKE ? OR blood_group LIKE ?
-                        ORDER BY id DESC;
+                        WHERE id = ?;
                         """,
-                        (term, term, term, term, term, term),
+                        (pat_id,),
                     )
                 else:
-                    cursor = conn.execute(
-                        """
-                        SELECT id, patient_code, first_name, last_name, dob, gender, phone, email, blood_group, emergency_contact, address, status
-                        FROM patients
-                        ORDER BY id DESC;
-                        """
-                    )
+                    if query.strip():
+                        term = f"%{query.strip()}%"
+                        cursor = conn.execute(
+                            """
+                            SELECT id, patient_code, first_name, last_name, dob, gender, phone, email, blood_group, emergency_contact, address, status
+                            FROM patients
+                            WHERE patient_code LIKE ? OR first_name LIKE ? OR last_name LIKE ? OR phone LIKE ? OR email LIKE ? OR blood_group LIKE ?
+                            ORDER BY id DESC;
+                            """,
+                            (term, term, term, term, term, term),
+                        )
+                    else:
+                        cursor = conn.execute(
+                            """
+                            SELECT id, patient_code, first_name, last_name, dob, gender, phone, email, blood_group, emergency_contact, address, status
+                            FROM patients
+                            ORDER BY id DESC;
+                            """
+                        )
                 results = [dict(row) for row in cursor.fetchall()]
         except Exception as e:
             print(f"Error loading patients from SQLite: {e}")
         return results
 
     def _build_header(self) -> None:
-        """Header with title, search input, clear button, and prominent '+ Add Patient' button."""
+        """Header with title, search input, clear button, and role-authorized '+ Add Patient' button."""
         self.header = ctk.CTkFrame(self, fg_color="transparent")
         self.header.pack(fill="x", padx=24, pady=(20, 10))
 
         info_box = ctk.CTkFrame(self.header, fg_color="transparent")
         info_box.pack(side="left")
 
+        user = get_current_user() or {}
+        role = user.get("role")
+        if role == "Doctor":
+            title_text = "My Assigned Patients"
+            sub_text = f"Total: {len(self.patients)} patient records assigned to your outpatient care."
+        elif role == "Patient":
+            title_text = "My Patient Profile"
+            sub_text = "Your verified outpatient demographics and medical emergency records."
+        else:
+            title_text = "Patient Registry & Records"
+            sub_text = f"Total: {len(self.patients)} patient records persisted in SQLite database."
+
         title = ctk.CTkLabel(
             info_box,
-            text="Patient Registry & Records",
+            text=title_text,
             font=ctk.CTkFont(size=24, weight="bold"),
             text_color=("#0F172A", "#F8FAFC"),
         )
@@ -69,7 +122,7 @@ class PatientsView(ctk.CTkFrame):
 
         self.subtitle_lbl = ctk.CTkLabel(
             info_box,
-            text=f"Total: {len(self.patients)} patient records persisted in SQLite database.",
+            text=sub_text,
             font=ctk.CTkFont(size=12),
             text_color=("#64748B", "#94A3B8"),
         )
@@ -117,19 +170,20 @@ class PatientsView(ctk.CTkFrame):
         )
         clear_btn.pack(side="left", padx=(0, 12))
 
-        # + Add Patient Button (Prominent Action)
-        self.add_btn = ctk.CTkButton(
-            ctrl_box,
-            text="＋ Add Patient",
-            font=ctk.CTkFont(size=13, weight="bold"),
-            fg_color="#0284C7",
-            hover_color="#0369A1",
-            width=145,
-            height=36,
-            corner_radius=8,
-            command=self._open_add_modal,
-        )
-        self.add_btn.pack(side="left")
+        # + Add Patient Button (ONLY for Administrator and Reception Staff; Doctor and Patient must NOT see)
+        if role in ("Hospital Administrator", "Administrator", "Staff", "Reception Staff") or role is None:
+            self.add_btn = ctk.CTkButton(
+                ctrl_box,
+                text="＋ Add Patient",
+                font=ctk.CTkFont(size=13, weight="bold"),
+                fg_color="#0284C7",
+                hover_color="#0369A1",
+                width=145,
+                height=36,
+                corner_radius=8,
+                command=self._open_add_modal,
+            )
+            self.add_btn.pack(side="left")
 
     def _build_notification_banner(self) -> None:
         """Feedback toast/banner for immediate success and error reporting."""
@@ -180,14 +234,14 @@ class PatientsView(ctk.CTkFrame):
         self.card = ctk.CTkFrame(
             self,
             corner_radius=12,
-            fg_color=("white", "#1E202E"),
+            fg_color=("#FFFFFF", "#0F1E3D"),
             border_width=1,
-            border_color=("#E2E8F0", "#334155"),
+            border_color=("#CBD5E1", "#1E3258"),
         )
         self.card.pack(fill="both", expand=True, padx=24, pady=(0, 20))
 
         # Column Headers
-        col_frame = ctk.CTkFrame(self.card, fg_color=("#F8FAFC", "#26293B"), height=36, corner_radius=6)
+        col_frame = ctk.CTkFrame(self.card, fg_color=("#F1F5F9", "#0B152B"), height=36, corner_radius=6)
         col_frame.pack(fill="x", padx=14, pady=10)
 
         headers = [
@@ -311,39 +365,44 @@ class PatientsView(ctk.CTkFrame):
                 height=22,
             ).pack(side="left", padx=6)
 
-            # 7. Actions Frame (Edit + Delete)
-            act_frame = ctk.CTkFrame(row, fg_color="transparent", width=130)
-            act_frame.pack(side="left", padx=6)
+            # 7. Actions Frame (Edit + Delete) — ONLY rendered for Administrator and Reception Staff
+            user = get_current_user() or {}
+            role = user.get("role")
+            can_manage = role in ("Hospital Administrator", "Administrator", "Staff", "Reception Staff") or role is None
 
-            # Edit Button
-            edit_btn = ctk.CTkButton(
-                act_frame,
-                text="✏️ Edit",
-                font=ctk.CTkFont(size=11, weight="bold"),
-                fg_color=("#E2E8F0", "#334155"),
-                text_color=("#0F172A", "#F8FAFC"),
-                hover_color=("#CBD5E1", "#475569"),
-                width=56,
-                height=26,
-                corner_radius=6,
-                command=lambda p_row=p: self._open_edit_modal(p_row),
-            )
-            edit_btn.pack(side="left", padx=(0, 6))
+            if can_manage:
+                act_frame = ctk.CTkFrame(row, fg_color="transparent", width=130)
+                act_frame.pack(side="left", padx=6)
 
-            # Delete Button
-            del_btn = ctk.CTkButton(
-                act_frame,
-                text="🗑️ Del",
-                font=ctk.CTkFont(size=11, weight="bold"),
-                fg_color=("#FEE2E2", "#7F1D1D"),
-                text_color=("#DC2626", "#FCA5A5"),
-                hover_color=("#FECACA", "#991B1B"),
-                width=56,
-                height=26,
-                corner_radius=6,
-                command=lambda p_row=p: self._open_delete_modal(p_row),
-            )
-            del_btn.pack(side="left")
+                # Edit Button
+                edit_btn = ctk.CTkButton(
+                    act_frame,
+                    text="✏️ Edit",
+                    font=ctk.CTkFont(size=11, weight="bold"),
+                    fg_color=("#E2E8F0", "#334155"),
+                    text_color=("#0F172A", "#F8FAFC"),
+                    hover_color=("#CBD5E1", "#475569"),
+                    width=56,
+                    height=26,
+                    corner_radius=6,
+                    command=lambda p_row=p: self._open_edit_modal(p_row),
+                )
+                edit_btn.pack(side="left", padx=(0, 6))
+
+                # Delete Button
+                del_btn = ctk.CTkButton(
+                    act_frame,
+                    text="🗑️ Del",
+                    font=ctk.CTkFont(size=11, weight="bold"),
+                    fg_color=("#FEE2E2", "#7F1D1D"),
+                    text_color=("#DC2626", "#FCA5A5"),
+                    hover_color=("#FECACA", "#991B1B"),
+                    width=56,
+                    height=26,
+                    corner_radius=6,
+                    command=lambda p_row=p: self._open_delete_modal(p_row),
+                )
+                del_btn.pack(side="left")
 
     def _open_add_modal(self) -> None:
         """Open modal form to register a new patient."""

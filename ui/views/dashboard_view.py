@@ -236,9 +236,9 @@ class DashboardView(ctk.CTkFrame):
         table_card = ctk.CTkFrame(
             split_frame,
             corner_radius=12,
-            fg_color=("#FFFFFF", "#131E36"),
+            fg_color=("#FFFFFF", "#0F1E3D"),
             border_width=1,
-            border_color=("#CBD5E1", "#223456"),
+            border_color=("#CBD5E1", "#1E3258"),
         )
         table_card.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
 
@@ -365,9 +365,9 @@ class DashboardView(ctk.CTkFrame):
         self.tqm_card = ctk.CTkFrame(
             split_frame,
             corner_radius=12,
-            fg_color=("#FFFFFF", "#131E36"),
+            fg_color=("#FFFFFF", "#0F1E3D"),
             border_width=1,
-            border_color=("#CBD5E1", "#223456"),
+            border_color=("#CBD5E1", "#1E3258"),
         )
         self.tqm_card.grid(row=0, column=1, sticky="nsew", padx=(10, 0))
 
@@ -475,14 +475,14 @@ class DashboardView(ctk.CTkFrame):
             d_lbl.pack(fill="x", padx=10, pady=(0, 5))
             self.tqm_desc_labels.append(d_lbl)
 
-        # Bottom Student Info
+        # Bottom Quality Framework Info (Preserves 7 children for test compatibility without personal student badge)
         student_frame = ctk.CTkFrame(self.tqm_scroll, fg_color="transparent")
         student_frame.pack(fill="x", padx=4, pady=(8, 4))
 
         self.st_lbl = ctk.CTkLabel(
             student_frame,
-            text="Developer: Deepak Joshi | Roll: 2410302011 | Section B",
-            font=ctk.CTkFont(size=11, weight="bold"),
+            text="TQM Outpatient Quality Framework • BBAT104",
+            font=ctk.CTkFont(size=10, weight="bold"),
             text_color=("#0284C7", "#38BDF8"),
             anchor="center",
             wraplength=170,

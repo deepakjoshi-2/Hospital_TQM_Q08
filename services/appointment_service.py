@@ -331,13 +331,20 @@ def create_appointment(data: Dict[str, any], user: Optional[Dict] = None) -> Tup
 
     # 4. Insert into SQLite
     try:
+        from services.token_service import generate_next_token
+        token_num = str(data.get("token_number") or "").strip()
+        if not token_num:
+            token_num = generate_next_token(doctor_id, appt_date)
+        queue_status = "Completed" if status == STATUS_COMPLETED else ("Cancelled" if status == STATUS_CANCELLED else "Waiting")
+
         with get_db_cursor() as (conn, cursor):
             cursor.execute(
                 """
                 INSERT INTO appointments (
                     appointment_code, patient_id, doctor_id, appointment_date,
-                    time_slot, reason, priority, status, consultation_fee, satisfaction_rating, notes
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                    time_slot, reason, priority, status, consultation_fee, satisfaction_rating, notes,
+                    token_number, queue_status
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
                 """,
                 (
                     appt_code,
@@ -351,6 +358,8 @@ def create_appointment(data: Dict[str, any], user: Optional[Dict] = None) -> Tup
                     consultation_fee,
                     rating_val,
                     str(data.get("notes") or "").strip() or None,
+                    token_num,
+                    queue_status,
                 ),
             )
             new_id = cursor.lastrowid
@@ -583,21 +592,32 @@ def delete_appointment(appointment_id: int) -> Tuple[bool, str]:
 # ==============================================================================
 
 def get_appointment_confirmation_details(appointment_id: int) -> Optional[Dict]:
-    """Generate structured confirmation card details including fee and patient instructions."""
+    """Generate structured confirmation card details including fee, token, and patient instructions."""
     appt = get_appointment_by_id(appointment_id)
     if not appt:
         return None
 
+    # Fetch live token and queue tracking info
+    from services.token_service import get_queue_status_for_appointment
+    queue_info = get_queue_status_for_appointment(appointment_id) or {}
+
     patient_instructions = [
         "Please arrive at the clinic 15 minutes before your scheduled appointment time.",
-        "Present your Appointment Reference Code and a valid Government ID at the reception.",
+        "Present your Token Reference Number and Appointment Code at the OPD reception.",
         "Bring previous medical records, ongoing prescriptions, and relevant lab reports.",
+        "Track live queue progress and wait times in real-time from your Patient Portal.",
         "To reschedule or cancel, please notify the hospital desk at least 2 hours in advance.",
     ]
 
     return {
         "appointment_id": appt["id"],
         "appointment_code": appt["appointment_code"],
+        "token_number": queue_info.get("token_number") or appt.get("token_number") or "TK-01",
+        "queue_status": queue_info.get("queue_status") or appt.get("queue_status") or "Waiting",
+        "currently_serving_token": queue_info.get("currently_serving_token", "None"),
+        "queue_position": queue_info.get("queue_position", 0),
+        "queue_position_text": queue_info.get("queue_position_text", "Waiting in queue"),
+        "estimated_wait_text": queue_info.get("estimated_wait_text", "~15 mins"),
         "status": appt["status"],
         "priority": appt["priority"],
         "patient_id": appt["patient_id"],
@@ -608,7 +628,7 @@ def get_appointment_confirmation_details(appointment_id: int) -> Optional[Dict]:
         "doctor_name": f"Dr. {appt['doctor_first_name']} {appt['doctor_last_name']}",
         "doctor_code": appt["doctor_code"],
         "specialization": appt["specialization"],
-        "room_number": appt["room_number"],
+        "room_number": appt["room_number"] or "OPD-101",
         "appointment_date": appt["appointment_date"],
         "time_slot": appt["time_slot"],
         "consultation_fee": float(appt.get("consultation_fee") or appt.get("effective_fee") or 500.0),
@@ -725,3 +745,4 @@ def submit_visit_feedback(
             return True, f"Thank you! Your {rating_val}★ feedback for {row['appointment_code']} has been recorded successfully."
     except Exception as e:
         return False, f"Error saving feedback: {e}"
+

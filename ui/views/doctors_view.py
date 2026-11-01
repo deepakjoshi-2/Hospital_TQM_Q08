@@ -6,6 +6,7 @@ from typing import Optional
 
 from config.constants import SPECIALIZATIONS
 from database.connection import get_db_connection
+from services.auth_service import get_current_user
 from ui.components.doctor_modals import ConfirmDoctorActionModal, DoctorFormModal
 
 
@@ -120,19 +121,24 @@ class DoctorsView(ctk.CTkFrame):
         )
         clear_btn.pack(side="left", padx=(0, 10))
 
-        # + Add Doctor Button (Prominent Action)
-        self.add_btn = ctk.CTkButton(
-            ctrl_box,
-            text="＋ Add Doctor",
-            font=ctk.CTkFont(size=13, weight="bold"),
-            fg_color="#0284C7",
-            hover_color="#0369A1",
-            width=145,
-            height=36,
-            corner_radius=8,
-            command=self._open_add_modal,
-        )
-        self.add_btn.pack(side="left")
+        # + Add Doctor Button (ONLY for Administrator; Staff, Doctor, and Patient must NOT see)
+        user = get_current_user() or {}
+        role = user.get("role")
+        can_manage_doctors = role in ("Hospital Administrator", "Administrator") or role is None
+
+        if can_manage_doctors:
+            self.add_btn = ctk.CTkButton(
+                ctrl_box,
+                text="＋ Add Doctor",
+                font=ctk.CTkFont(size=13, weight="bold"),
+                fg_color="#0284C7",
+                hover_color="#0369A1",
+                width=145,
+                height=36,
+                corner_radius=8,
+                command=self._open_add_modal,
+            )
+            self.add_btn.pack(side="left")
 
     def _build_notification_banner(self) -> None:
         """Feedback toast/banner for immediate success and error reporting."""
@@ -183,14 +189,14 @@ class DoctorsView(ctk.CTkFrame):
         self.card = ctk.CTkFrame(
             self,
             corner_radius=12,
-            fg_color=("white", "#1E202E"),
+            fg_color=("#FFFFFF", "#0F1E3D"),
             border_width=1,
-            border_color=("#E2E8F0", "#334155"),
+            border_color=("#CBD5E1", "#1E3258"),
         )
         self.card.pack(fill="both", expand=True, padx=24, pady=(0, 20))
 
         # Column Headers
-        col_frame = ctk.CTkFrame(self.card, fg_color=("#F8FAFC", "#26293B"), height=36, corner_radius=6)
+        col_frame = ctk.CTkFrame(self.card, fg_color=("#F1F5F9", "#0B152B"), height=36, corner_radius=6)
         col_frame.pack(fill="x", padx=14, pady=10)
 
         headers = [
@@ -315,39 +321,44 @@ class DoctorsView(ctk.CTkFrame):
             )
             chip.pack(side="left", padx=6)
 
-            # 7. Actions Frame (Edit + Delete)
-            act_frame = ctk.CTkFrame(row, fg_color="transparent", width=130)
-            act_frame.pack(side="left", padx=6)
+            # 7. Actions Frame (Edit + Delete) — ONLY for Administrator
+            user = get_current_user() or {}
+            role = user.get("role")
+            can_manage_doctors = role in ("Hospital Administrator", "Administrator") or role is None
 
-            # Edit Button
-            edit_btn = ctk.CTkButton(
-                act_frame,
-                text="✏️ Edit",
-                font=ctk.CTkFont(size=11, weight="bold"),
-                fg_color=("#E2E8F0", "#334155"),
-                text_color=("#0F172A", "#F8FAFC"),
-                hover_color=("#CBD5E1", "#475569"),
-                width=56,
-                height=26,
-                corner_radius=6,
-                command=lambda d_row=d: self._open_edit_modal(d_row),
-            )
-            edit_btn.pack(side="left", padx=(0, 6))
+            if can_manage_doctors:
+                act_frame = ctk.CTkFrame(row, fg_color="transparent", width=130)
+                act_frame.pack(side="left", padx=6)
 
-            # Delete Button
-            del_btn = ctk.CTkButton(
-                act_frame,
-                text="🗑️ Del",
-                font=ctk.CTkFont(size=11, weight="bold"),
-                fg_color=("#FEE2E2", "#7F1D1D"),
-                text_color=("#DC2626", "#FCA5A5"),
-                hover_color=("#FECACA", "#991B1B"),
-                width=56,
-                height=26,
-                corner_radius=6,
-                command=lambda d_row=d: self._open_delete_modal(d_row),
-            )
-            del_btn.pack(side="left")
+                # Edit Button
+                edit_btn = ctk.CTkButton(
+                    act_frame,
+                    text="✏️ Edit",
+                    font=ctk.CTkFont(size=11, weight="bold"),
+                    fg_color=("#E2E8F0", "#334155"),
+                    text_color=("#0F172A", "#F8FAFC"),
+                    hover_color=("#CBD5E1", "#475569"),
+                    width=56,
+                    height=26,
+                    corner_radius=6,
+                    command=lambda d_row=d: self._open_edit_modal(d_row),
+                )
+                edit_btn.pack(side="left", padx=(0, 6))
+
+                # Delete Button
+                del_btn = ctk.CTkButton(
+                    act_frame,
+                    text="🗑️ Del",
+                    font=ctk.CTkFont(size=11, weight="bold"),
+                    fg_color=("#FEE2E2", "#7F1D1D"),
+                    text_color=("#DC2626", "#FCA5A5"),
+                    hover_color=("#FECACA", "#991B1B"),
+                    width=56,
+                    height=26,
+                    corner_radius=6,
+                    command=lambda d_row=d: self._open_delete_modal(d_row),
+                )
+                del_btn.pack(side="left")
 
     def _open_add_modal(self) -> None:
         """Open modal form to register a new physician."""

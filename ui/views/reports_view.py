@@ -205,13 +205,13 @@ class ReportsView(ctk.CTkFrame):
         is_dark = ctk.get_appearance_mode().lower() == "dark"
         return {
             "is_dark": is_dark,
-            "bg": "#131E36" if is_dark else "#FFFFFF",
+            "bg": "#0F1E3D" if is_dark else "#FFFFFF",
             "text": "#F8FAFC" if is_dark else "#0A192F",
             "muted": "#94A3B8" if is_dark else "#627D98",
-            "grid": "#1E2D4A" if is_dark else "#E2E8F0",
-            "spine": "#223456" if is_dark else "#CBD5E1",
-            "card_bg": ("white", "#131E36"),
-            "border": ("#CBD5E1", "#223456"),
+            "grid": "#1E3258" if is_dark else "#E2E8F0",
+            "spine": "#1E3258" if is_dark else "#CBD5E1",
+            "card_bg": ("white", "#0F1E3D"),
+            "border": ("#CBD5E1", "#1E3258"),
         }
 
     def _close_active_figures(self) -> None:

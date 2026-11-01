@@ -23,6 +23,7 @@ class TestQualityTraceAndFishbone(unittest.TestCase):
             cls.baseline_patients = conn.execute("SELECT COUNT(*) FROM patients;").fetchone()[0]
             cls.baseline_doctors = conn.execute("SELECT COUNT(*) FROM doctors;").fetchone()[0]
             cls.baseline_appointments = conn.execute("SELECT COUNT(*) FROM appointments;").fetchone()[0]
+            cls.baseline_completed_appointments = conn.execute("SELECT COUNT(*) FROM appointments WHERE status = 'Completed';").fetchone()[0]
             cls.baseline_defects = conn.execute("SELECT COUNT(*) FROM tqm_defect_logs;").fetchone()[0]
             cls.baseline_fmea = conn.execute("SELECT COUNT(*) FROM tqm_fmea_records;").fetchone()[0]
 
@@ -131,7 +132,7 @@ class TestQualityTraceAndFishbone(unittest.TestCase):
         kpis = trace["kpi_summary"]
         self.assertEqual(kpis["total_defects_logged"], 21)
         self.assertEqual(kpis["total_appointments"], self.baseline_appointments)
-        self.assertEqual(kpis["completed_appointments"], 20)
+        self.assertEqual(kpis["completed_appointments"], self.baseline_completed_appointments)
         self.assertEqual(kpis["csat_rated_count"], 20)
         self.assertAlmostEqual(kpis["measured_csat"], 4.45, places=2)
         self.assertTrue(kpis["has_collision_index"])

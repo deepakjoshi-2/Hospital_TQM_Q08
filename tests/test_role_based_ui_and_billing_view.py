@@ -18,8 +18,11 @@ from ui.app import HospitalApp
 from ui.components.appointment_modals import AppointmentConfirmationModal
 from ui.components.billing_modals import RecordPaymentModal, ReceiptViewModal
 from ui.components.notification_modal import NotificationCenterModal
+from ui.views.appointments_view import AppointmentsView
 from ui.views.billing_view import BillingView
+from ui.views.doctors_view import DoctorsView
 from ui.views.login_view import LoginView
+from ui.views.patients_view import PatientsView
 from ui.views.user_management_view import UserManagementView
 
 
@@ -58,12 +61,12 @@ class TestRoleBasedUIAndBillingView(unittest.TestCase):
         app = HospitalApp()
         self.root.update()
 
-        # 1. Administrator Menu Check (9 buttons)
+        # 1. Administrator Menu Check
         admin_keys = set(app.nav_buttons.keys())
-        expected_admin = {"Dashboard", "Patients", "Doctors", "Appointments", "Reports", "Billing", "TQM", "Users", "Settings"}
+        expected_admin = {"Dashboard", "Patients", "Doctors", "Appointments", "MedicalRecords", "Billing", "Reports", "TQM", "Users", "Settings"}
         self.assertEqual(admin_keys, expected_admin)
 
-        # 2. Staff Menu Check (6 buttons)
+        # 2. Staff Menu Check
         _, staff_u, _ = login("staff_reception", "Staff@123")
         app.on_login_success(staff_u)
         self.root.update()
@@ -71,20 +74,20 @@ class TestRoleBasedUIAndBillingView(unittest.TestCase):
         expected_staff = {"Dashboard", "Patients", "Doctors", "Appointments", "Billing", "Settings"}
         self.assertEqual(staff_keys, expected_staff)
 
-        # 3. Doctor Menu Check (5 buttons)
+        # 3. Doctor Menu Check
         _, doc_u, _ = login("dr_arun", "Doctor@123")
         app.on_login_success(doc_u)
         self.root.update()
         doc_keys = set(app.nav_buttons.keys())
-        expected_doctor = {"Appointments", "Patients", "Reports", "Billing", "Settings"}
+        expected_doctor = {"Dashboard", "Appointments", "Patients", "MedicalRecords", "Settings"}
         self.assertEqual(doc_keys, expected_doctor)
 
-        # 4. Patient Menu Check (4 buttons)
+        # 4. Patient Menu Check
         _, pat_u, _ = login("patient_aarav", "Patient@123")
         app.on_login_success(pat_u)
         self.root.update()
         pat_keys = set(app.nav_buttons.keys())
-        expected_patient = {"Appointments", "Doctors", "Billing", "Settings"}
+        expected_patient = {"Dashboard", "Appointments", "Billing", "Settings"}
         self.assertEqual(pat_keys, expected_patient)
 
         app.destroy()
@@ -168,6 +171,94 @@ class TestRoleBasedUIAndBillingView(unittest.TestCase):
         self.root.update()
         self.assertTrue(notif_modal.winfo_exists())
         notif_modal.destroy()
+        self.root.update()
+
+    def test_06_unauthorized_buttons_and_actions_hidden(self):
+        """Verify Add Doctor and Add Patient buttons are omitted for unauthorized roles."""
+        # 1. Doctor role: no Add Patient, no Add Doctor
+        login("dr_arun", "Doctor@123")
+        doc_pv = PatientsView(self.root)
+        self.root.update()
+        self.assertFalse(hasattr(doc_pv, "add_btn") and doc_pv.add_btn is not None)
+        doc_pv.destroy()
+
+        doc_dv = DoctorsView(self.root)
+        self.root.update()
+        self.assertFalse(hasattr(doc_dv, "add_btn") and doc_dv.add_btn is not None)
+        doc_dv.destroy()
+        self.root.update()
+
+        # 2. Patient role: no Add Patient, no Add Doctor
+        login("patient_aarav", "Patient@123")
+        pat_pv = PatientsView(self.root)
+        self.root.update()
+        self.assertFalse(hasattr(pat_pv, "add_btn") and pat_pv.add_btn is not None)
+        pat_pv.destroy()
+
+        pat_dv = DoctorsView(self.root)
+        self.root.update()
+        self.assertFalse(hasattr(pat_dv, "add_btn") and pat_dv.add_btn is not None)
+        pat_dv.destroy()
+        self.root.update()
+
+        # 3. Staff role: HAS Add Patient, but NO Add Doctor
+        login("staff_reception", "Staff@123")
+        staff_pv = PatientsView(self.root)
+        self.root.update()
+        self.assertTrue(hasattr(staff_pv, "add_btn") and staff_pv.add_btn is not None)
+        staff_pv.destroy()
+
+        staff_dv = DoctorsView(self.root)
+        self.root.update()
+        self.assertFalse(hasattr(staff_dv, "add_btn") and staff_dv.add_btn is not None)
+        staff_dv.destroy()
+        self.root.update()
+
+        # 4. Admin role: HAS both Add Patient and Add Doctor
+        login("admin", "Admin@123")
+        admin_pv = PatientsView(self.root)
+        self.root.update()
+        self.assertTrue(hasattr(admin_pv, "add_btn") and admin_pv.add_btn is not None)
+        admin_pv.destroy()
+
+        admin_dv = DoctorsView(self.root)
+        self.root.update()
+        self.assertTrue(hasattr(admin_dv, "add_btn") and admin_dv.add_btn is not None)
+        admin_dv.destroy()
+        self.root.update()
+
+    def test_07_tqm_and_reports_restricted_from_doctor_and_patient(self):
+        """Verify TQM and Reports are restricted and redirect to Dashboard for unauthorized roles."""
+        app = HospitalApp()
+        self.root.update()
+
+        # 1. Doctor cannot access TQM or Billing or Reports from sidebar
+        _, doc_u, _ = login("dr_arun", "Doctor@123")
+        app.on_login_success(doc_u)
+        self.root.update()
+        self.assertNotIn("TQM", app.nav_buttons)
+        self.assertNotIn("Reports", app.nav_buttons)
+        self.assertNotIn("Billing", app.nav_buttons)
+
+        # Attempting show_view redirects to Dashboard
+        app.show_view("TQM")
+        self.root.update()
+        self.assertEqual(app.active_view_name, "Dashboard")
+
+        # 2. Patient cannot access TQM or Reports or Doctors or Patients
+        _, pat_u, _ = login("patient_aarav", "Patient@123")
+        app.on_login_success(pat_u)
+        self.root.update()
+        self.assertNotIn("TQM", app.nav_buttons)
+        self.assertNotIn("Reports", app.nav_buttons)
+        self.assertNotIn("Doctors", app.nav_buttons)
+        self.assertNotIn("Patients", app.nav_buttons)
+
+        app.show_view("Reports")
+        self.root.update()
+        self.assertEqual(app.active_view_name, "Dashboard")
+
+        app.destroy()
         self.root.update()
 
 

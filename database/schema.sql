@@ -70,6 +70,8 @@ CREATE TABLE IF NOT EXISTS appointments (
     status TEXT NOT NULL DEFAULT 'Confirmed' CHECK(status IN ('Pending', 'Confirmed', 'Scheduled', 'Completed', 'Cancelled', 'No-Show')),
     consultation_fee REAL NOT NULL DEFAULT 500.0 CHECK(consultation_fee >= 0),
     satisfaction_rating INTEGER CHECK(satisfaction_rating IS NULL OR (satisfaction_rating BETWEEN 1 AND 5)),
+    token_number TEXT,
+    queue_status TEXT NOT NULL DEFAULT 'Waiting' CHECK(queue_status IN ('Waiting', 'Now Serving', 'Completed', 'Cancelled', 'No-Show')),
     notes TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

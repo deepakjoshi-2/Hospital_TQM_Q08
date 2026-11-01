@@ -8,19 +8,22 @@ from typing import Optional
 from config.constants import APPOINTMENT_STATUSES
 from database.connection import get_db_connection
 from services.auth_service import get_current_user
+from services.token_service import start_consultation, complete_consultation
 from ui.components.appointment_modals import (
     AppointmentConfirmationModal,
     AppointmentFormModal,
     ConfirmAppointmentActionModal,
     PostVisitFeedbackModal,
 )
+from ui.components.token_tracker import LiveQueueTrackerModal
 
 
 class AppointmentsView(ctk.CTkFrame):
     """Appointment scheduling view with full Create, Read, Update, Delete/Cancel, and Search operations."""
 
-    def __init__(self, master, **kwargs):
+    def __init__(self, master, is_medical_records: bool = False, **kwargs):
         super().__init__(master, fg_color="transparent", **kwargs)
+        self.is_medical_records = is_medical_records
         self._notice_timer_id: Optional[str] = None
         self.current_search_query = ""
         self.current_status_filter = "All Statuses"
@@ -48,6 +51,8 @@ class AppointmentsView(ctk.CTkFrame):
                            a.reason,
                            a.priority,
                            a.status,
+                           a.token_number,
+                           a.queue_status,
                            a.satisfaction_rating
                     FROM appointments a
                     JOIN patients p ON a.patient_id = p.id
@@ -105,9 +110,25 @@ class AppointmentsView(ctk.CTkFrame):
         info_box = ctk.CTkFrame(top_row, fg_color="transparent")
         info_box.pack(side="left")
 
+        u = get_current_user() or {}
+        user_role = u.get("role")
+
+        if self.is_medical_records:
+            header_title = "Medical Records (EHR) & Clinical History"
+            header_sub = f"Total: {len(self.appointments)} clinical consultation records and diagnostic notes in SQLite."
+        elif user_role == "Doctor":
+            header_title = "My Clinical Appointments"
+            header_sub = f"Total: {len(self.appointments)} outpatient visits assigned to your care."
+        elif user_role == "Patient":
+            header_title = "My Outpatient Appointments"
+            header_sub = f"Total: {len(self.appointments)} personal consultations on record."
+        else:
+            header_title = "Clinical Appointments Management"
+            header_sub = f"Total: {len(self.appointments)} scheduled, completed, and historical consultations in SQLite."
+
         title = ctk.CTkLabel(
             info_box,
-            text="Clinical Appointments Management",
+            text=header_title,
             font=ctk.CTkFont(size=24, weight="bold"),
             text_color=("#0F172A", "#F8FAFC"),
         )
@@ -115,35 +136,51 @@ class AppointmentsView(ctk.CTkFrame):
 
         self.subtitle_lbl = ctk.CTkLabel(
             info_box,
-            text=f"Total: {len(self.appointments)} scheduled, completed, and historical consultations in SQLite.",
+            text=header_sub,
             font=ctk.CTkFont(size=12),
             text_color=("#64748B", "#94A3B8"),
         )
         self.subtitle_lbl.pack(anchor="w", pady=(2, 0))
 
-        # Primary Actions Panel on Top Right: Export CSV + Book Appointment
+        # Primary Actions Panel on Top Right: Tracker + Export CSV + Book Appointment
         self.actions_box = ctk.CTkFrame(top_row, fg_color="transparent")
         self.actions_box.pack(side="right")
 
-        # 📥 Export CSV Button
-        self.export_btn = ctk.CTkButton(
+        # 🎫 Live Queue Tracker Button (Available to all roles)
+        self.tracker_btn = ctk.CTkButton(
             self.actions_box,
-            text="📥 Export CSV",
+            text="🎫 Live Tracker",
             font=ctk.CTkFont(size=12, weight="bold"),
-            fg_color=("#E2E8F0", "#334155"),
-            text_color=("#0F172A", "#F8FAFC"),
-            hover_color=("#CBD5E1", "#475569"),
-            width=120,
+            fg_color=("#E0F2FE", "#0F2B48"),
+            text_color=("#0284C7", "#38BDF8"),
+            hover_color=("#BAE6FD", "#163E66"),
+            border_width=1,
+            border_color=("#0284C7", "#06B6D4"),
+            width=125,
             height=36,
             corner_radius=8,
-            command=self._on_export_csv,
+            command=self._open_tracker_modal,
         )
-        self.export_btn.pack(side="left", padx=(0, 10))
+        self.tracker_btn.pack(side="left", padx=(0, 10))
 
-        # + Book Appointment Button (Only for Admin, Staff, and Patients - Doctors manage assigned schedule)
-        u = get_current_user() or {}
-        user_role = u.get("role")
-        if user_role != "Doctor":
+        # 📥 Export CSV Button (Omitted for Patient)
+        if user_role != "Patient":
+            self.export_btn = ctk.CTkButton(
+                self.actions_box,
+                text="📥 Export CSV",
+                font=ctk.CTkFont(size=12, weight="bold"),
+                fg_color=("#E2E8F0", "#334155"),
+                text_color=("#0F172A", "#F8FAFC"),
+                hover_color=("#CBD5E1", "#475569"),
+                width=120,
+                height=36,
+                corner_radius=8,
+                command=self._on_export_csv,
+            )
+            self.export_btn.pack(side="left", padx=(0, 10))
+
+        # + Book Appointment Button (Omitted for Doctor and EHR records mode)
+        if user_role != "Doctor" and not self.is_medical_records:
             self.add_btn = ctk.CTkButton(
                 self.actions_box,
                 text="＋ Book Appointment",
@@ -263,25 +300,26 @@ class AppointmentsView(ctk.CTkFrame):
         self.card = ctk.CTkFrame(
             self,
             corner_radius=12,
-            fg_color=("white", "#1E202E"),
+            fg_color=("#FFFFFF", "#0F1E3D"),
             border_width=1,
-            border_color=("#E2E8F0", "#334155"),
+            border_color=("#CBD5E1", "#1E3258"),
         )
         self.card.pack(fill="both", expand=True, padx=24, pady=(0, 20))
 
         # Column Headers
-        col_frame = ctk.CTkFrame(self.card, fg_color=("#F8FAFC", "#26293B"), height=36, corner_radius=6)
+        col_frame = ctk.CTkFrame(self.card, fg_color=("#F1F5F9", "#0B152B"), height=36, corner_radius=6)
         col_frame.pack(fill="x", padx=14, pady=10)
 
         headers = [
+            ("Token", 65),
             ("Code", 75),
-            ("Date & Time", 125),
-            ("Patient Name", 130),
-            ("Physician", 135),
-            ("Priority", 70),
-            ("Status", 85),
-            ("Rating", 55),
-            ("Actions", 210),
+            ("Date & Time", 120),
+            ("Patient Name", 125),
+            ("Physician", 130),
+            ("Priority", 65),
+            ("Status", 80),
+            ("Rating", 50),
+            ("Actions", 230),
         ]
         for h_text, width in headers:
             lbl = ctk.CTkLabel(
@@ -292,7 +330,7 @@ class AppointmentsView(ctk.CTkFrame):
                 width=width,
                 anchor="w",
             )
-            lbl.pack(side="left", padx=6, pady=4)
+            lbl.pack(side="left", padx=5, pady=4)
 
         # Scrollable rows container
         self.rows_frame = ctk.CTkScrollableFrame(self.card, fg_color="transparent")
@@ -318,6 +356,20 @@ class AppointmentsView(ctk.CTkFrame):
             row = ctk.CTkFrame(self.rows_frame, fg_color="transparent", height=40)
             row.pack(fill="x", pady=2)
 
+            # 0. Token
+            tok = a.get("token_number") or "—"
+            tok_lbl = ctk.CTkLabel(
+                row,
+                text=tok,
+                font=ctk.CTkFont(size=11, weight="bold"),
+                text_color=("#0284C7", "#38BDF8"),
+                width=65,
+                anchor="w",
+                cursor="hand2",
+            )
+            tok_lbl.pack(side="left", padx=5)
+            tok_lbl.bind("<Button-1>", lambda event, a_row=a: self._open_tracker_modal(a_row))
+
             # 1. Code
             ctk.CTkLabel(
                 row,
@@ -326,7 +378,7 @@ class AppointmentsView(ctk.CTkFrame):
                 text_color=("#0284C7", "#38BDF8"),
                 width=75,
                 anchor="w",
-            ).pack(side="left", padx=6)
+            ).pack(side="left", padx=5)
 
             # 2. Date & Time
             ctk.CTkLabel(
@@ -334,33 +386,33 @@ class AppointmentsView(ctk.CTkFrame):
                 text=f"{a['appointment_date']} {a['time_slot']}",
                 font=ctk.CTkFont(size=11),
                 text_color=("#0F172A", "#F8FAFC"),
-                width=125,
+                width=120,
                 anchor="w",
-            ).pack(side="left", padx=6)
+            ).pack(side="left", padx=5)
 
             # 3. Patient Name
             pat_name = a["patient_name"]
-            display_pat = pat_name[:18] + ".." if len(pat_name) > 18 else pat_name
+            display_pat = pat_name[:16] + ".." if len(pat_name) > 16 else pat_name
             ctk.CTkLabel(
                 row,
                 text=display_pat,
                 font=ctk.CTkFont(size=12),
                 text_color=("#0F172A", "#F8FAFC"),
-                width=135,
+                width=125,
                 anchor="w",
-            ).pack(side="left", padx=6)
+            ).pack(side="left", padx=5)
 
             # 4. Doctor Name
             doc_name = a["doctor_name"]
-            display_doc = doc_name[:18] + ".." if len(doc_name) > 18 else doc_name
+            display_doc = doc_name[:16] + ".." if len(doc_name) > 16 else doc_name
             ctk.CTkLabel(
                 row,
                 text=display_doc,
                 font=ctk.CTkFont(size=11),
                 text_color=("#64748B", "#94A3B8"),
-                width=140,
+                width=130,
                 anchor="w",
-            ).pack(side="left", padx=6)
+            ).pack(side="left", padx=5)
 
             # 5. Priority
             p = a["priority"]
@@ -370,9 +422,9 @@ class AppointmentsView(ctk.CTkFrame):
                 text=p,
                 font=ctk.CTkFont(size=11, weight="bold" if p == "Urgent" else "normal"),
                 text_color=p_fg,
-                width=75,
+                width=65,
                 anchor="w",
-            ).pack(side="left", padx=6)
+            ).pack(side="left", padx=5)
 
             # 6. Status Chip
             st = a["status"]
@@ -396,10 +448,10 @@ class AppointmentsView(ctk.CTkFrame):
                 fg_color=c_bg,
                 text_color=c_fg,
                 corner_radius=6,
-                width=85,
+                width=80,
                 height=22,
             )
-            chip.pack(side="left", padx=6)
+            chip.pack(side="left", padx=5)
 
             # 7. Rating
             rating = a["satisfaction_rating"]
@@ -409,13 +461,46 @@ class AppointmentsView(ctk.CTkFrame):
                 text=rating_text,
                 font=ctk.CTkFont(size=11, weight="bold"),
                 text_color=("#F59E0B" if rating else "#94A3B8"),
-                width=55,
+                width=50,
                 anchor="w",
-            ).pack(side="left", padx=6)
+            ).pack(side="left", padx=5)
 
-            # 8. Actions Frame (Slip + Edit + Del/Cancel + Feedback)
-            act_frame = ctk.CTkFrame(row, fg_color="transparent", width=210)
-            act_frame.pack(side="left", padx=6)
+            # 8. Actions Frame (Slip + Edit + Del/Cancel + Feedback + Consultation Controls)
+            act_frame = ctk.CTkFrame(row, fg_color="transparent", width=230)
+            act_frame.pack(side="left", padx=5)
+
+            user = get_current_user() or {}
+            role = user.get("role")
+
+            # Doctor consultation progression controls
+            if role == "Doctor":
+                q_st = a.get("queue_status") or "Waiting"
+                if q_st == "Waiting" and a["status"] in ("Scheduled", "Confirmed"):
+                    start_btn = ctk.CTkButton(
+                        act_frame,
+                        text="▶ Start",
+                        font=ctk.CTkFont(size=10, weight="bold"),
+                        fg_color="#0284C7",
+                        hover_color="#0369A1",
+                        width=52,
+                        height=26,
+                        corner_radius=6,
+                        command=lambda aid=a["id"]: self._on_start_consultation(aid),
+                    )
+                    start_btn.pack(side="left", padx=(0, 3))
+                elif q_st == "Now Serving" or (a["status"] == "Confirmed" and q_st != "Completed"):
+                    comp_btn = ctk.CTkButton(
+                        act_frame,
+                        text="✓ Finish",
+                        font=ctk.CTkFont(size=10, weight="bold"),
+                        fg_color="#10B981",
+                        hover_color="#059669",
+                        width=54,
+                        height=26,
+                        corner_radius=6,
+                        command=lambda aid=a["id"]: self._on_complete_consultation(aid),
+                    )
+                    comp_btn.pack(side="left", padx=(0, 3))
 
             # Slip Button (Available to all authorized roles)
             slip_btn = ctk.CTkButton(
@@ -434,10 +519,8 @@ class AppointmentsView(ctk.CTkFrame):
             )
             slip_btn.pack(side="left", padx=(0, 3))
 
-            # Edit Button (For Admin, Staff, and Doctor)
-            user = get_current_user() or {}
-            role = user.get("role")
-            if role in ("Hospital Administrator", "Staff", "Doctor") or role is None:
+            # Edit Button (For Admin, Staff, and Doctor — Omitted for Patient)
+            if role in ("Hospital Administrator", "Administrator", "Staff", "Reception Staff", "Doctor") or role is None:
                 edit_txt = "✏️ Note" if role == "Doctor" else "✏️ Edit"
                 edit_btn = ctk.CTkButton(
                     act_frame,
@@ -453,8 +536,8 @@ class AppointmentsView(ctk.CTkFrame):
                 )
                 edit_btn.pack(side="left", padx=(0, 3))
 
-            # Delete / Cancel Button (strictly Admin and Staff only; Doctors cannot delete appointments)
-            if role in ("Hospital Administrator", "Staff") or role is None:
+            # Delete / Cancel Button (strictly Admin and Staff only; Doctor and Patient must NOT see)
+            if role in ("Hospital Administrator", "Administrator", "Staff", "Reception Staff") or role is None:
                 del_btn = ctk.CTkButton(
                     act_frame,
                     text="🗑️ Del",
@@ -484,6 +567,58 @@ class AppointmentsView(ctk.CTkFrame):
                     command=lambda a_row=a: self._open_feedback_modal(a_row),
                 )
                 fb_btn.pack(side="left")
+
+    def _open_tracker_modal(self, appointment: Optional[dict] = None) -> None:
+        """Open live OPD queue tracker modal with optional appointment context."""
+        doc_id = None
+        appt_id = None
+        appt_date = None
+        if appointment:
+            doc_id = appointment.get("doctor_id")
+            appt_id = appointment.get("id")
+            appt_date = appointment.get("appointment_date")
+        else:
+            user = get_current_user() or {}
+            role = user.get("role")
+            if role == "Doctor":
+                doc_id = user.get("linked_doctor_id")
+            elif role == "Patient" and self.appointments:
+                for a in self.appointments:
+                    if a.get("status") in ("Confirmed", "Scheduled") and a.get("queue_status") in ("Waiting", "Now Serving"):
+                        doc_id = a.get("doctor_id")
+                        appt_id = a.get("id")
+                        appt_date = a.get("appointment_date")
+                        break
+
+        LiveQueueTrackerModal(
+            self.winfo_toplevel(),
+            doctor_id=doc_id,
+            appointment_id=appt_id,
+            appointment_date=appt_date,
+            on_update=self.refresh_data,
+        )
+
+    def _on_start_consultation(self, appointment_id: int) -> None:
+        """Doctor action: mark consultation as Now Serving."""
+        res = start_consultation(appointment_id)
+        is_ok = res[0] if isinstance(res, (tuple, list)) else bool(res.get("success"))
+        if is_ok:
+            self._show_notice(f"Started consultation for appointment #{appointment_id}")
+            self.refresh_data()
+        else:
+            err = res[1] if isinstance(res, (tuple, list)) else res.get("error", "Failed to start consultation")
+            self._show_notice(err, is_error=True)
+
+    def _on_complete_consultation(self, appointment_id: int) -> None:
+        """Doctor action: mark consultation as Completed."""
+        res = complete_consultation(appointment_id)
+        is_ok = res[0] if isinstance(res, (tuple, list)) else bool(res.get("success"))
+        if is_ok:
+            self._show_notice(f"Consultation completed for appointment #{appointment_id}")
+            self.refresh_data()
+        else:
+            err = res[1] if isinstance(res, (tuple, list)) else res.get("error", "Failed to complete consultation")
+            self._show_notice(err, is_error=True)
 
     def _open_slip_modal(self, appointment_id: int) -> None:
         """Open appointment confirmation slip modal."""

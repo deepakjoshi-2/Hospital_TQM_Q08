@@ -26,11 +26,11 @@ class KPICard(ctk.CTkFrame):
         self.command = command
         self.action_hint = action_hint
 
-        # Theme-aware card colors (Clinical Analytics: Deep Navy in dark, Clean Crisp White in light)
-        self.normal_bg = ("#FFFFFF", "#131E36")
-        self.hover_bg = ("#F8FAFC", "#1A2847")
-        self.press_bg = ("#F1F5F9", "#1E3163")
-        self.normal_border = ("#E2E8F0", "#223456")
+        # Theme-aware card colors (MedCare Healthcare SaaS Aesthetic)
+        self.normal_bg = ("#FFFFFF", "#0F1E3D")
+        self.hover_bg = ("#F8FAFC", "#16284F")
+        self.press_bg = ("#F1F5F9", "#1D3263")
+        self.normal_border = ("#CBD5E1", "#1E3258")
         self.hover_border = accent_color
 
         self.configure(

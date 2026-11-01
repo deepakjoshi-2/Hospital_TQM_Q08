@@ -30,6 +30,7 @@ from ui.views import (
     BillingView,
     DashboardView,
     DoctorsView,
+    HomeView,
     LoginView,
     PatientsView,
     ReportsView,
@@ -54,7 +55,7 @@ class HospitalApp(ctk.CTk):
         ctk.set_default_color_theme("blue")
 
         # Window Metadata
-        self.title(f"{APP_NAME} — [{STUDENT_NAME} | {STUDENT_BRANCH}]")
+        self.title(f"{APP_NAME} — Hospital Management Solution")
 
         # Center on screen adaptively to monitor dimensions
         self._center_window()
@@ -66,6 +67,8 @@ class HospitalApp(ctk.CTk):
 
         # Active view tracking
         self.active_view_name = "Dashboard"
+        self.nav_history: list = []
+        self._is_navigating_back: bool = False
         self.nav_buttons: Dict[str, ctk.CTkButton] = {}
         self.current_view_frame: Optional[ctk.CTkFrame] = None
         self.login_container: Optional[ctk.CTkFrame] = None
@@ -141,8 +144,10 @@ class HospitalApp(ctk.CTk):
             font=ctk.CTkFont(size=18, weight="bold"),
             text_color=("#0284C7", "#06B6D4"),
             anchor="w",
+            cursor="hand2",
         )
         logo_lbl.pack(fill="x")
+        logo_lbl.bind("<Button-1>", lambda event: self.show_view("Dashboard"))
 
         sub_lbl = ctk.CTkLabel(
             brand_frame,
@@ -151,23 +156,11 @@ class HospitalApp(ctk.CTk):
             text_color=("#475569", "#94A3B8"),
             anchor="w",
         )
-        sub_lbl.pack(fill="x")
-
-        # Student Badge
-        badge = ctk.CTkLabel(
-            brand_frame,
-            text=f"{STUDENT_NAME} • {STUDENT_SECTION}",
-            font=ctk.CTkFont(size=10, weight="bold"),
-            fg_color=("#F1F5F9", "#131E36"),
-            text_color=("#0A192F", "#F8FAFC"),
-            corner_radius=6,
-            height=24,
-        )
-        badge.pack(fill="x", pady=(8, 0))
+        sub_lbl.pack(fill="x", pady=(2, 0))
 
         # Separator line
-        sep = ctk.CTkFrame(self.sidebar, height=1, fg_color=("#CBD5E1", "#1E2D4A"))
-        sep.pack(fill="x", padx=16, pady=(12, 16))
+        sep = ctk.CTkFrame(self.sidebar, height=1, fg_color=("#CBD5E1", "#1E3258"))
+        sep.pack(fill="x", padx=16, pady=(14, 10))
 
         # 2. Navigation Menu Container (Dynamically rendered per role)
         self.nav_menu_container = ctk.CTkFrame(self.sidebar, fg_color="transparent")
@@ -232,19 +225,20 @@ class HospitalApp(ctk.CTk):
 
         if role == ROLE_ADMIN:
             menu_items = [
-                ("Dashboard", "📊  Dashboard"),
+                ("Dashboard", "🏠  Home & Dashboard"),
                 ("Patients", "👥  Patients Directory"),
                 ("Doctors", "👨‍⚕️  Physicians Roster"),
                 ("Appointments", "📅  Appointments"),
-                ("Reports", "📈  Visual Reports"),
+                ("MedicalRecords", "📁  Medical Records (EHR)"),
                 ("Billing", "💳  Billing & Receipts"),
+                ("Reports", "📈  Visual Reports"),
                 ("TQM", "🛡️  TQM Quality Tools"),
                 ("Users", "👥  User Accounts"),
                 ("Settings", "⚙️  User Settings"),
             ]
         elif role == ROLE_STAFF:
             menu_items = [
-                ("Dashboard", "📊  Dashboard"),
+                ("Dashboard", "🏠  Home & Dashboard"),
                 ("Patients", "👥  Patients Directory"),
                 ("Doctors", "👨‍⚕️  Physicians Roster"),
                 ("Appointments", "📅  Appointments"),
@@ -253,27 +247,26 @@ class HospitalApp(ctk.CTk):
             ]
         elif role == ROLE_DOCTOR:
             menu_items = [
+                ("Dashboard", "🏠  Home & Dashboard"),
                 ("Appointments", "📅  My Appointments"),
-                ("Patients", "👥  Patient Directory"),
-                ("Reports", "📈  Clinical Reports"),
-                ("Billing", "💳  Consultation Billings"),
-                ("Settings", "⚙️  User Settings"),
+                ("Patients", "👥  My Patients"),
+                ("MedicalRecords", "📁  Medical Records (EHR)"),
+                ("Settings", "⚙️  My Profile"),
             ]
         elif role == ROLE_PATIENT:
             menu_items = [
+                ("Dashboard", "🏠  Home & Dashboard"),
                 ("Appointments", "📅  My Appointments"),
-                ("Doctors", "👨‍⚕️  Physicians Roster"),
                 ("Billing", "💳  My Invoices & Receipts"),
                 ("Settings", "⚙️  My Profile"),
             ]
         else:
             menu_items = [
-                ("Dashboard", "📊  Dashboard"),
+                ("Dashboard", "🏠  Home & Dashboard"),
                 ("Patients", "👥  Patients Directory"),
                 ("Doctors", "👨‍⚕️  Physicians Roster"),
                 ("Appointments", "📅  Appointments"),
-                ("Reports", "📈  Visual Reports"),
-                ("TQM", "🛡️  TQM Quality Tools"),
+                ("Billing", "💳  Billing & Receipts"),
                 ("Settings", "⚙️  User Settings"),
             ]
 
@@ -300,30 +293,48 @@ class HospitalApp(ctk.CTk):
         self.content_container.grid_rowconfigure(1, weight=1)
         self.content_container.grid_columnconfigure(0, weight=1)
 
-        # Top Header Bar
+        # Top Header Bar — Pinned Stable Shell Layout
         self.top_bar = ctk.CTkFrame(
             self.content_container,
             height=60,
             corner_radius=0,
-            fg_color=("#FFFFFF", "#0F172A"),
+            fg_color=("#FFFFFF", "#0B152B"),
             border_width=1,
-            border_color=("#CBD5E1", "#1E2D4A"),
+            border_color=("#CBD5E1", "#1E3258"),
         )
         self.top_bar.grid(row=0, column=0, sticky="ew")
         self.top_bar.grid_propagate(False)
 
-        # Title in top bar
+        # Left Shell Area: Pinned Back Button + Dynamic Page Title
+        left_bar = ctk.CTkFrame(self.top_bar, fg_color="transparent")
+        left_bar.pack(side="left", padx=(16, 12), fill="y")
+
+        self.back_btn = ctk.CTkButton(
+            left_bar,
+            text="← Back",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            width=76,
+            height=32,
+            corner_radius=16,
+            command=self.go_back,
+            cursor="hand2",
+            fg_color="transparent",
+            text_color=("#94A3B8", "#64748B"),
+        )
+        self.back_btn.pack(side="left", padx=(0, 10), pady=14)
+
         self.view_title_lbl = ctk.CTkLabel(
-            self.top_bar,
-            text="Interactive Dashboard",
+            left_bar,
+            text="MedCare Unified Dashboard",
             font=ctk.CTkFont(size=17, weight="bold"),
             text_color=("#0A192F", "#F8FAFC"),
+            anchor="w",
         )
-        self.view_title_lbl.pack(side="left", padx=24)
+        self.view_title_lbl.pack(side="left", pady=14)
 
-        # Right actions in top bar
+        # Right Shell Area: Pinned Controls (Never shift or jitter)
         right_actions = ctk.CTkFrame(self.top_bar, fg_color="transparent")
-        right_actions.pack(side="right", padx=20)
+        right_actions.pack(side="right", padx=16, fill="y")
 
         # Shortcuts Help button (F1)
         help_btn = ctk.CTkButton(
@@ -335,12 +346,12 @@ class HospitalApp(ctk.CTk):
             hover_color=("#E2E8F0", "#223862"),
             border_width=1,
             border_color=("#CBD5E1", "#243666"),
-            width=120,
+            width=115,
             height=32,
             corner_radius=6,
             command=self.show_shortcuts_modal,
         )
-        help_btn.pack(side="left", padx=(0, 10))
+        help_btn.pack(side="left", padx=(0, 8), pady=14)
 
         # Quick Theme Toggle Button
         self.theme_quick_btn = ctk.CTkButton(
@@ -357,14 +368,14 @@ class HospitalApp(ctk.CTk):
             border_color=("#CBD5E1", "#243666"),
             command=self.toggle_theme,
         )
-        self.theme_quick_btn.pack(side="left", padx=(0, 8))
+        self.theme_quick_btn.pack(side="left", padx=(0, 8), pady=14)
 
         # In-App Notification Bell Button
         self.notif_btn = ctk.CTkButton(
             right_actions,
             text="🔔 0",
             font=ctk.CTkFont(size=11, weight="bold"),
-            width=78,
+            width=75,
             height=32,
             corner_radius=6,
             fg_color=("#F1F5F9", "#17254A"),
@@ -374,7 +385,7 @@ class HospitalApp(ctk.CTk):
             border_color=("#CBD5E1", "#243666"),
             command=self._open_notifications,
         )
-        self.notif_btn.pack(side="left", padx=(0, 8))
+        self.notif_btn.pack(side="left", padx=(0, 8), pady=14)
 
         # User Profile Pill (Clickable -> Settings)
         user_chip = ctk.CTkFrame(
@@ -385,14 +396,14 @@ class HospitalApp(ctk.CTk):
             corner_radius=16,
             cursor="hand2",
         )
-        user_chip.pack(side="left")
+        user_chip.pack(side="left", pady=14)
 
         self.user_lbl = ctk.CTkLabel(
             user_chip,
-            text=f"👤 {STUDENT_NAME} (Admin)",
+            text="👤 User · Administrator",
             font=ctk.CTkFont(size=11, weight="bold"),
             text_color=("#0A192F", "#F8FAFC"),
-            padx=12,
+            padx=10,
             pady=4,
             cursor="hand2",
         )
@@ -415,7 +426,7 @@ class HospitalApp(ctk.CTk):
             border_color=("#FCA5A5", "#5C2029"),
             command=self.logout_user,
         )
-        self.signout_btn.pack(side="left", padx=(8, 0))
+        self.signout_btn.pack(side="left", padx=(8, 0), pady=14)
 
         # Initialize profile display from SQLite
         self.update_profile_display()
@@ -424,17 +435,32 @@ class HospitalApp(ctk.CTk):
         self.current_view_frame: Optional[ctk.CTkFrame] = None
 
     def update_profile_display(self, profile: Optional[dict] = None) -> None:
-        """Update top bar user badge with active session or profile."""
+        """Update top bar user badge with clean single role formatting: 👤 {clean_name} · {clean_role}."""
+        import re
         current_u = get_current_user()
         if current_u:
-            role_text = current_u.get("role", "Admin")
-            name_text = current_u.get("full_name", STUDENT_NAME)
+            raw_role = current_u.get("role", "Administrator")
+            raw_name = current_u.get("full_name") or current_u.get("username", "User")
+            clean_name = re.sub(r"\s*\([^)]*\)", "", raw_name).strip()
+            if not clean_name:
+                clean_name = current_u.get("username", "User")
+            if len(clean_name) > 22:
+                clean_name = clean_name[:20] + "…"
+            role_map = {
+                "Hospital Administrator": "Administrator",
+                "Administrator": "Administrator",
+                "Staff": "Reception Staff",
+                "Reception Staff": "Reception Staff",
+                "Doctor": "Doctor",
+                "Patient": "Patient",
+            }
+            clean_role = role_map.get(raw_role, raw_role)
+            display_text = f"👤 {clean_name} · {clean_role}"
         else:
-            role_text = "Guest"
-            name_text = "Not Signed In"
+            display_text = "👤 Guest · Visitor"
 
         if hasattr(self, "user_lbl"):
-            self.user_lbl.configure(text=f"👤 {name_text} ({role_text})")
+            self.user_lbl.configure(text=display_text)
         self.update_notification_badge()
 
     def update_notification_badge(self) -> None:
@@ -516,17 +542,84 @@ class HospitalApp(ctk.CTk):
         self._rebuild_sidebar_menu()
         self.update_profile_display()
 
-        role = user.get("role", ROLE_ADMIN)
-        if role in (ROLE_DOCTOR, ROLE_PATIENT):
-            self.show_view("Appointments")
+        # Unified Dashboard is the default landing page upon login for ALL four roles
+        self.show_view("Dashboard")
+
+    def go_back(self) -> None:
+        """Navigate back to the previous view using navigation history stack."""
+        if self.nav_history:
+            prev_view = None
+            while self.nav_history:
+                candidate = self.nav_history.pop()
+                if candidate != self.active_view_name:
+                    prev_view = candidate
+                    break
+            if prev_view:
+                self._is_navigating_back = True
+                try:
+                    self.show_view(prev_view)
+                finally:
+                    self._is_navigating_back = False
+                return
+
+        # Default fallback to Home/Dashboard if history is empty
+        fallback = "Dashboard"
+        if self.active_view_name != fallback:
+            self._is_navigating_back = True
+            try:
+                self.show_view(fallback)
+            finally:
+                self._is_navigating_back = False
+
+    def _update_back_button(self, view_name: str) -> None:
+        """Update ← Back button state and clinical cyan highlight."""
+        if not hasattr(self, "back_btn"):
+            return
+        is_root = view_name in ("Dashboard", "Home")
+        if not is_root or len(self.nav_history) > 0:
+            self.back_btn.configure(
+                state="normal",
+                fg_color=("#E0F2FE", "#0F2B48"),
+                text_color=("#0284C7", "#38BDF8"),
+                hover_color=("#BAE6FD", "#163E66"),
+                border_width=1,
+                border_color=("#0284C7", "#06B6D4"),
+                cursor="hand2",
+            )
         else:
-            self.show_view("Dashboard")
+            self.back_btn.configure(
+                state="disabled",
+                fg_color="transparent",
+                text_color=("#94A3B8", "#64748B"),
+                border_width=0,
+                cursor="arrow",
+            )
 
     def show_view(self, view_name: str, **kwargs) -> None:
         """Switch active view frame dynamically with highlight updating."""
         # Normalize common aliases
         if view_name in ("TQM Toolkit", "TQM Quality Tools"):
             view_name = "TQM"
+
+        user = get_current_user() or {}
+        role = user.get("role", ROLE_ADMIN)
+
+        # Enforce role-based view authorization guards
+        if role == ROLE_PATIENT and view_name in ("Doctors", "Reports", "TQM", "Users", "Patients"):
+            view_name = "Dashboard"
+        elif role == ROLE_DOCTOR and view_name in ("Doctors", "Reports", "TQM", "Users", "Billing"):
+            view_name = "Dashboard"
+        elif role == ROLE_STAFF and view_name in ("TQM", "Users", "Reports"):
+            from services.auth_service import has_permission
+            if view_name != "TQM" or not has_permission("view_tqm", user):
+                view_name = "Dashboard"
+
+        # Record navigation history if not actively navigating back
+        if not self._is_navigating_back:
+            if hasattr(self, "active_view_name") and self.active_view_name and self.active_view_name != view_name and self.active_view_name != "Login":
+                self.nav_history.append(self.active_view_name)
+                if len(self.nav_history) > 30:
+                    self.nav_history.pop(0)
 
         self.active_view_name = view_name
 
@@ -546,40 +639,43 @@ class HospitalApp(ctk.CTk):
                     border_width=0,
                 )
 
-        # Remove existing view frame
+        self._update_back_button(view_name)
+
+        # Destroy current view before loading new one (clean state and resources)
         if self.current_view_frame is not None:
-            self.current_view_frame.destroy()
+            try:
+                self.current_view_frame.destroy()
+            except Exception:
+                pass
             self.current_view_frame = None
 
         # Instantiate requested view
-        if view_name == "Dashboard":
-            self.view_title_lbl.configure(text="Executive Clinical Dashboard")
-            self.current_view_frame = DashboardView(self.content_container, on_navigate=self.show_view)
+        self._update_view_title(view_name, role)
+        if view_name in ("Home", "Dashboard"):
+            new_view = HomeView(
+                self.content_container,
+                on_navigate=self.show_view,
+                on_theme_toggle=self.toggle_theme,
+            )
         elif view_name == "Patients":
-            self.view_title_lbl.configure(text="Patient Directory & Demographics")
-            self.current_view_frame = PatientsView(self.content_container)
+            new_view = PatientsView(self.content_container)
         elif view_name == "Doctors":
-            self.view_title_lbl.configure(text="Physician Roster & Specializations")
-            self.current_view_frame = DoctorsView(self.content_container)
+            new_view = DoctorsView(self.content_container)
         elif view_name == "Appointments":
-            self.view_title_lbl.configure(text="Clinical Appointments Management")
-            self.current_view_frame = AppointmentsView(self.content_container)
+            new_view = AppointmentsView(self.content_container)
+        elif view_name == "MedicalRecords":
+            new_view = AppointmentsView(self.content_container, is_medical_records=True)
         elif view_name == "Reports":
-            self.view_title_lbl.configure(text="Visual Reports & Quality Analytics")
             target_rep = kwargs.get("target_report")
-            self.current_view_frame = ReportsView(self.content_container, target_report=target_rep)
+            new_view = ReportsView(self.content_container, target_report=target_rep)
         elif view_name == "Billing":
-            self.view_title_lbl.configure(text="Consultation Billing & Receipts")
-            self.current_view_frame = BillingView(self.content_container)
+            new_view = BillingView(self.content_container)
         elif view_name == "TQM":
-            self.view_title_lbl.configure(text="TQM Quality Toolkit (BBAT104)")
-            self.current_view_frame = TQMView(self.content_container)
+            new_view = TQMView(self.content_container)
         elif view_name == "Users":
-            self.view_title_lbl.configure(text="System User Accounts & Roles")
-            self.current_view_frame = UserManagementView(self.content_container)
+            new_view = UserManagementView(self.content_container)
         elif view_name == "Settings":
-            self.view_title_lbl.configure(text="User Profile & Application Settings")
-            self.current_view_frame = SettingsView(
+            new_view = SettingsView(
                 self.content_container,
                 on_theme_change=self.set_theme_mode,
                 on_profile_updated=self.update_profile_display,
@@ -587,9 +683,52 @@ class HospitalApp(ctk.CTk):
         elif view_name == "Login":
             self.show_login_screen()
             return
+        else:
+            new_view = HomeView(self.content_container, on_navigate=self.show_view)
 
-        if self.current_view_frame is not None:
-            self.current_view_frame.grid(row=1, column=0, sticky="nsew")
+        self.current_view_frame = new_view
+        self.current_view_frame.grid(row=1, column=0, sticky="nsew")
+
+    def _update_view_title(self, view_name: str, role: str) -> None:
+        """Update top bar title dynamically for the active view."""
+        if not hasattr(self, "view_title_lbl"):
+            return
+        if view_name in ("Home", "Dashboard"):
+            self.view_title_lbl.configure(text="MedCare Unified Dashboard")
+        elif view_name == "Patients":
+            if role == ROLE_DOCTOR:
+                self.view_title_lbl.configure(text="My Assigned Patients")
+            elif role == ROLE_PATIENT:
+                self.view_title_lbl.configure(text="My Patient Profile")
+            else:
+                self.view_title_lbl.configure(text="Patient Directory & Demographics")
+        elif view_name == "Doctors":
+            self.view_title_lbl.configure(text="Physician Roster & Specializations")
+        elif view_name == "Appointments":
+            if role == ROLE_DOCTOR:
+                self.view_title_lbl.configure(text="My Clinical Appointments")
+            elif role == ROLE_PATIENT:
+                self.view_title_lbl.configure(text="My Outpatient Appointments")
+            else:
+                self.view_title_lbl.configure(text="Clinical Appointments Management")
+        elif view_name == "MedicalRecords":
+            self.view_title_lbl.configure(text="Medical Records (EHR) & Consultation History")
+        elif view_name == "Reports":
+            self.view_title_lbl.configure(text="Visual Reports & Quality Analytics")
+        elif view_name == "Billing":
+            if role == ROLE_PATIENT:
+                self.view_title_lbl.configure(text="My Invoices & Receipts")
+            else:
+                self.view_title_lbl.configure(text="Consultation Billing & Receipts")
+        elif view_name == "TQM":
+            self.view_title_lbl.configure(text="TQM Quality Toolkit (BBAT104)")
+        elif view_name == "Users":
+            self.view_title_lbl.configure(text="System User Accounts & Roles")
+        elif view_name == "Settings":
+            if role in (ROLE_DOCTOR, ROLE_PATIENT):
+                self.view_title_lbl.configure(text="My Profile & Account Preferences")
+            else:
+                self.view_title_lbl.configure(text="User Profile & Application Settings")
 
     def set_theme_mode(self, mode: str) -> None:
         """Switch appearance mode in real time and refresh view."""

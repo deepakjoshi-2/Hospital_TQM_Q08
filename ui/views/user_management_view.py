@@ -103,11 +103,11 @@ class UserManagementView(ctk.CTkFrame):
             r_box,
             text="🔄 Refresh",
             font=ctk.CTkFont(size=12, weight="bold"),
-            fg_color=("#F1F5F9", "#1E2D4A"),
+            fg_color=("#F1F5F9", "#17254A"),
             text_color=("#0F172A", "#F8FAFC"),
-            hover_color=("#E2E8F0", "#2B3E63"),
+            hover_color=("#E2E8F0", "#223862"),
             border_width=1,
-            border_color=("#CBD5E1", "#33456B"),
+            border_color=("#CBD5E1", "#243666"),
             height=34,
             command=self.load_users,
         )
@@ -117,15 +117,15 @@ class UserManagementView(ctk.CTkFrame):
         """Scrollable table frame holding user account records."""
         table_shell = ctk.CTkFrame(
             self,
-            fg_color=("#FFFFFF", "#0F172A"),
+            fg_color=("#FFFFFF", "#0F1E3D"),
             border_width=1,
-            border_color=("#CBD5E1", "#1E2D4A"),
+            border_color=("#CBD5E1", "#1E3258"),
             corner_radius=8,
         )
         table_shell.pack(fill="both", expand=True, padx=24, pady=(0, 16))
 
         # Table Column Headers
-        hdr_row = ctk.CTkFrame(table_shell, height=36, fg_color=("#F1F5F9", "#16233E"), corner_radius=0)
+        hdr_row = ctk.CTkFrame(table_shell, height=36, fg_color=("#F1F5F9", "#0B152B"), corner_radius=0)
         hdr_row.pack(fill="x")
         hdr_row.pack_propagate(False)
 

@@ -127,9 +127,9 @@ class SettingsView(ctk.CTkFrame):
         p_card = ctk.CTkFrame(
             parent,
             corner_radius=12,
-            fg_color=("white", "#1E202E"),
+            fg_color=("#FFFFFF", "#0F1E3D"),
             border_width=1,
-            border_color=("#E2E8F0", "#334155"),
+            border_color=("#CBD5E1", "#1E3258"),
         )
         p_card.grid(row=0, column=0, padx=(0, 8), pady=(0, 16), sticky="nsew")
 
@@ -259,19 +259,6 @@ class SettingsView(ctk.CTkFrame):
         self.phone_entry.insert(0, self.profile_data.get("phone", "+91 98765 43210"))
         self.phone_entry.pack(side="left", fill="x", expand=True)
 
-        # Academic Metadata Badge
-        acad_row = ctk.CTkFrame(p_card, fg_color=("#F8FAFC", "#26293B"), corner_radius=6)
-        acad_row.pack(fill="x", padx=20, pady=(10, 14))
-        ctk.CTkLabel(
-            acad_row,
-            text=f"🎓 {APP_SUBTITLE} • {STUDENT_SECTION}",
-            font=ctk.CTkFont(size=11, weight="bold"),
-            text_color=("#64748B", "#94A3B8"),
-            padx=10,
-            pady=6,
-        ).pack(anchor="w")
-
-
         # Action Buttons
         btn_row = ctk.CTkFrame(p_card, fg_color="transparent")
         btn_row.pack(fill="x", padx=20, pady=(4, 18))
@@ -306,9 +293,9 @@ class SettingsView(ctk.CTkFrame):
         s_card = ctk.CTkFrame(
             parent,
             corner_radius=12,
-            fg_color=("white", "#1E202E"),
+            fg_color=("#FFFFFF", "#0F1E3D"),
             border_width=1,
-            border_color=("#E2E8F0", "#334155"),
+            border_color=("#CBD5E1", "#1E3258"),
         )
         s_card.grid(row=0, column=1, padx=(8, 0), pady=(0, 16), sticky="nsew")
 
@@ -438,9 +425,9 @@ class SettingsView(ctk.CTkFrame):
         m_card = ctk.CTkFrame(
             parent,
             corner_radius=12,
-            fg_color=("white", "#1E202E"),
+            fg_color=("#FFFFFF", "#0F1E3D"),
             border_width=1,
-            border_color=("#E2E8F0", "#334155"),
+            border_color=("#CBD5E1", "#1E3258"),
         )
         m_card.grid(row=1, column=0, columnspan=2, pady=(0, 20), sticky="nsew")
 

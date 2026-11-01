@@ -1,41 +1,51 @@
 """Theme and styling definitions for CustomTkinter and Matplotlib.
-Distinctive visual identity: Premium Clinical Analytics (Deep Navy + Cyan/Teal + Restrained Mint).
+Distinctive visual identity: MedCare Premium Healthcare SaaS (Deep Midnight Navy + Electric Cyan + Ocean Blue).
+Directly matches the visual language of MedCare Hospital Management Homepage reference.
 """
+from typing import Dict, Any
 
 # Appearance Modes
 APPEARANCE_MODES = ["Dark", "Light", "System"]
 COLOR_THEMES = ["blue", "green", "dark-blue"]
 
-# Palette Colors (Premium Clinical Analytics Aesthetic)
-THEME_COLORS = {
+# Palette Colors (Premium Healthcare SaaS Aesthetic)
+THEME_COLORS: Dict[str, Dict[str, str]] = {
     "dark": {
-        "bg_primary": "#0A0F1D",       # Deep clinical midnight navy
-        "bg_secondary": "#0F172A",     # Deep navy slate
-        "bg_card": "#131E36",          # Dark navy-cyan card background
-        "bg_card_hover": "#1A2847",    # Luminous card hover state
-        "bg_input": "#0B132B",         # Deep recessed input field
-        "text_primary": "#F8FAFC",     # Pure crisp slate white
-        "text_secondary": "#94A3B8",   # Neutral technical slate
-        "text_muted": "#64748B",       # Subdued technical text
-        "accent": "#0284C7",           # Clinical Ocean Blue / Cyan
-        "accent_cyan": "#06B6D4",      # Electric Cyan
-        "accent_mint": "#10B981",      # Restrained surgical mint
-        "accent_hover": "#0369A1",     # Deep cyan hover
-        "success": "#10B981",          # Surgical Mint / Green
-        "warning": "#F59E0B",          # Clinical Amber
-        "danger": "#EF4444",           # Rose Red
-        "info": "#38BDF8",             # Sky Blue
-        "border": "#223456",           # Crisp navy hairline border
-        "border_focus": "#06B6D4",     # Accent cyan focus
-        "chart_bg": "#131E36",         # Blends with card background
-        "chart_grid": "#1E2D4A",       # Subtle chart gridline
+        "bg_primary": "#070D1E",       # Deep midnight navy canvas (matches reference header/cards)
+        "bg_secondary": "#0B152B",     # Deep navy sidebar and navigation panels
+        "bg_card": "#0F1E3D",          # Elevated dark navy card
+        "bg_card_hover": "#16284F",    # Luminous card hover state
+        "bg_card_glass": "#0D1B36",    # Semi-translucent glassmorphic card
+        "bg_input": "#070E20",         # Deep recessed input field
+        "text_primary": "#FFFFFF",     # Pure crisp white text
+        "text_secondary": "#94A3B8",   # Slate text for secondary details
+        "text_muted": "#64748B",       # Muted annotation text
+        "accent": "#0284C7",           # Clinical Ocean Blue
+        "accent_cyan": "#06B6D4",      # Electric Cyan highlight
+        "accent_mint": "#10B981",      # Surgical Mint
+        "accent_hover": "#0369A1",     # Deep ocean blue hover
+        "success": "#10B981",          # Success green
+        "warning": "#F59E0B",          # Clinical amber
+        "danger": "#EF4444",           # Rose red
+        "info": "#38BDF8",             # Sky blue
+        "border": "#1E3258",           # Hairline navy card border
+        "border_subtle": "#132240",    # Very subtle card separator
+        "border_focus": "#06B6D4",     # Electric cyan focus glow
+        "badge_bg": "#0B2744",         # Pill badge dark tint
+        "badge_text": "#38BDF8",       # Pill badge cyan text
+        "hero_badge_bg": "#08233C",    # Hero tagline capsule background
+        "hero_badge_border": "#0E5280",# Hero tagline capsule border
+        "stat_card_bg": "#0F1E3D",     # Stats bar card
+        "chart_bg": "#0F1E3D",         # Blends with dark card background
+        "chart_grid": "#1A2C4E",       # Subtle chart gridline
     },
     "light": {
-        "bg_primary": "#F1F5F9",       # Crisp ice-slate
-        "bg_secondary": "#FFFFFF",     # Pure clinical white
+        "bg_primary": "#F0F6FC",       # Crisp icy-slate canvas
+        "bg_secondary": "#FFFFFF",     # Pure clinical white navigation
         "bg_card": "#FFFFFF",          # Elevated white card
-        "bg_card_hover": "#F8FAFC",    # Subtle light hover
-        "bg_input": "#F8FAFC",         # Soft recessed input
+        "bg_card_hover": "#F8FAFC",    # Subtle light card hover
+        "bg_card_glass": "#FFFFFF",    # Crisp glassmorphic card
+        "bg_input": "#F8FAFC",         # Soft recessed input field
         "text_primary": "#0A192F",     # Deep clinical navy text
         "text_secondary": "#334E68",   # Technical slate text
         "text_muted": "#627D98",       # Muted annotation text
@@ -48,7 +58,13 @@ THEME_COLORS = {
         "danger": "#DC2626",
         "info": "#0284C7",
         "border": "#CBD5E1",           # Crisp light border
+        "border_subtle": "#E2E8F0",    # Subtle separator
         "border_focus": "#0284C7",
+        "badge_bg": "#E0F2FE",         # Pill badge light tint
+        "badge_text": "#0369A1",       # Pill badge deep blue text
+        "hero_badge_bg": "#E0F2FE",    # Hero tagline capsule background
+        "hero_badge_border": "#BAE6FD",# Hero tagline capsule border
+        "stat_card_bg": "#FFFFFF",     # Stats bar card in light mode
         "chart_bg": "#FFFFFF",
         "chart_grid": "#E2E8F0",
     },
@@ -81,6 +97,11 @@ KPI_PALETTE = {
         "label": "SATISFACTION",
     },
 }
+
+def get_theme_color(token: str, mode: str = "dark") -> str:
+    """Retrieve color hex value safely by token and appearance mode."""
+    mode_key = "dark" if mode.lower() in ("dark", "system") else "light"
+    return THEME_COLORS[mode_key].get(token, THEME_COLORS[mode_key]["accent"])
 
 def get_matplotlib_style(mode: str = "dark") -> dict:
     """Return styling parameters for Matplotlib figures matching the current theme."""

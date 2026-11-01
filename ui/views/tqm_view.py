@@ -186,19 +186,19 @@ class TQMView(ctk.CTkFrame):
         self.tabview = ctk.CTkFrame(
             self,
             corner_radius=12,
-            fg_color=("white", "#181A26"),
+            fg_color=("#FFFFFF", "#0F1E3D"),
             border_width=1,
-            border_color=("#E2E8F0", "#26293B"),
+            border_color=("#CBD5E1", "#1E3258"),
         )
         self.tabview.pack(fill="both", expand=True, padx=24, pady=(0, 20))
 
         # Two-Row Navigation Header Frame
         self.tab_nav_frame = ctk.CTkFrame(
             self.tabview,
-            fg_color=("#F8FAFC", "#12141F"),
+            fg_color=("#F8FAFC", "#0B152B"),
             corner_radius=10,
             border_width=1,
-            border_color=("#E2E8F0", "#26293B"),
+            border_color=("#CBD5E1", "#1E3258"),
         )
         self.tab_nav_frame.pack(fill="x", padx=12, pady=(12, 8))
 
@@ -325,11 +325,11 @@ class TQMView(ctk.CTkFrame):
                 )
             else:
                 btn.configure(
-                    fg_color=("#F1F5F9", "#1E202E"),
+                    fg_color=("#F1F5F9", "#17254A"),
                     text_color=("#475569", "#94A3B8"),
-                    hover_color=("#E2E8F0", "#334155"),
+                    hover_color=("#E2E8F0", "#223862"),
                     border_width=1,
-                    border_color=("#E2E8F0", "#334155"),
+                    border_color=("#CBD5E1", "#243666"),
                 )
 
     def _get_theme_colors(self) -> Dict[str, str]:
@@ -337,11 +337,11 @@ class TQMView(ctk.CTkFrame):
         is_dark = ctk.get_appearance_mode().lower() == "dark"
         return {
             "is_dark": is_dark,
-            "bg": "#131E36" if is_dark else "#FFFFFF",
+            "bg": "#0F1E3D" if is_dark else "#FFFFFF",
             "text": "#F8FAFC" if is_dark else "#0A192F",
             "muted": "#94A3B8" if is_dark else "#627D98",
-            "grid": "#1E2D4A" if is_dark else "#E2E8F0",
-            "spine": "#223456" if is_dark else "#CBD5E1",
+            "grid": "#1E3258" if is_dark else "#E2E8F0",
+            "spine": "#1E3258" if is_dark else "#CBD5E1",
         }
 
     def _close_active_figures(self) -> None:
